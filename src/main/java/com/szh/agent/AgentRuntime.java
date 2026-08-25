@@ -17,6 +17,8 @@ public class AgentRuntime {
 
     private ToolRegistry toolRegistry;
 
+    private AgentState agentState = new AgentState();
+
     private Model model;
 
     public AgentRuntime(ToolRegistry toolRegistry, Model model) {
@@ -28,7 +30,6 @@ public class AgentRuntime {
 
     public String run(String userInput) {
 
-        AgentState agentState = new AgentState();
         MessageItem messageItem = new UserMessageItem(userInput);
         agentState.appendMsg(messageItem);
 

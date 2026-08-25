@@ -15,7 +15,12 @@ public class Test {
 
         AgentRuntime agentRuntime = new AgentRuntime(new ToolRegistry(), new FakeModel());
         String reply = agentRuntime.run(userInput);
-
         System.out.println(reply);
+
+
+        String reply2 = agentRuntime.run(userInput);
+        System.out.println(reply);
+
+
     }
 }
