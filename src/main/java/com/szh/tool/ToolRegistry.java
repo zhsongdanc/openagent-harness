@@ -9,7 +9,7 @@ import java.util.List;
  */
 public class ToolRegistry {
 
-    public static String call(String code, List<Object> args) {
+    public String call(String code, List<Object> args) {
         return "天气晴朗";
     }
 }

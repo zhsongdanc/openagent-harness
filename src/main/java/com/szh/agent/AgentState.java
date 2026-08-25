@@ -25,13 +25,8 @@ public class AgentState {
         histories.add(messageItem);
     }
 
-    public String buildContext() {
-
-        StringBuilder prompt = new StringBuilder();
-        histories.forEach(messageItem -> {
-            prompt.append(messageItem.transfer2prompt());
-        });
-
-        return prompt.toString();
+    public List<MessageItem> getHistories() {
+        return histories;
     }
+
 }

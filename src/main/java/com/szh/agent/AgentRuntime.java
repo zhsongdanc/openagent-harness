@@ -1,7 +1,9 @@
 package com.szh.agent;
 
+import com.szh.context.ContextBuilder;
 import com.szh.context.dto.*;
 import com.szh.model.FakeModel;
+import com.szh.model.Model;
 import com.szh.tool.ToolRegistry;
 
 import java.util.ArrayList;
@@ -12,6 +14,15 @@ import java.util.ArrayList;
  * @date 2026/8/25 12:09
  */
 public class AgentRuntime {
+
+    private ToolRegistry toolRegistry;
+
+    private Model model;
+
+    public AgentRuntime(ToolRegistry toolRegistry, Model model) {
+        this.toolRegistry = toolRegistry;
+        this.model = model;
+    }
 
     public static int MAX_ROUND = 100;
 
@@ -28,8 +39,7 @@ public class AgentRuntime {
                 break;
             }
 
-            String context = agentState.buildContext();
-            FakeModel model = new FakeModel();
+            String context = ContextBuilder.buildContext(agentState);
             AssistantMessageItem assistantMsg = model.call(context);
             agentState.appendMsg(assistantMsg);
 
@@ -38,7 +48,7 @@ public class AgentRuntime {
             }
 
             if (assistantMsg.isCallTool()) {
-                String toolRes = ToolRegistry.call(assistantMsg.getToolCode(), new ArrayList<>());
+                String toolRes = toolRegistry.call(assistantMsg.getToolCode(), new ArrayList<>());
                 MessageItem toolMsg = new ToolMessageItem(assistantMsg.getToolCode(), toolRes);
                 agentState.appendMsg(toolMsg);
             }
