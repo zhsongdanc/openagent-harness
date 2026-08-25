@@ -1,5 +1,7 @@
 package com.szh.context.dto;
 
+import com.szh.model.dto.ROLEEnum;
+
 /**
  * @author demussong
  * @describe
@@ -7,12 +9,19 @@ package com.szh.context.dto;
  */
 public class ToolMessageItem implements MessageItem {
 
+    private String callId;
     private String toolCode;
     private String execResult;
 
-    public ToolMessageItem(String toolCode, String execRes) {
+    public ToolMessageItem(String callId, String toolCode, String execRes) {
+        this.callId = callId;
         this.toolCode = toolCode;
         this.execResult = execRes;
+    }
+
+    @Override
+    public String role() {
+        return ROLEEnum.TOOL.getRole();
     }
 
     @Override

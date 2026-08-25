@@ -1,5 +1,7 @@
 package com.szh.context.dto;
 
+import com.szh.model.dto.ROLEEnum;
+
 /**
  * @author demussong
  * @describe
@@ -13,6 +15,11 @@ public class SystemMessageItem implements MessageItem{
         this.content = content;
     }
 
+
+    @Override
+    public String role() {
+        return ROLEEnum.SYSTEM.getRole();
+    }
 
     @Override
     public String transfer2prompt() {

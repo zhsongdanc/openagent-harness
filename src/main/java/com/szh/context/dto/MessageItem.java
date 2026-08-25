@@ -7,5 +7,7 @@ package com.szh.context.dto;
  */
 public interface MessageItem {
 
+    public String role();
+
     public String transfer2prompt();
 }

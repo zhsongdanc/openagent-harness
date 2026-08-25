@@ -4,6 +4,8 @@ import com.szh.context.ContextBuilder;
 import com.szh.context.dto.*;
 import com.szh.model.FakeModel;
 import com.szh.model.Model;
+import com.szh.model.dto.ActionEnum;
+import com.szh.model.dto.ModelResp;
 import com.szh.tool.ToolRegistry;
 
 import java.util.ArrayList;
@@ -41,16 +43,17 @@ public class AgentRuntime {
             }
 
             String context = ContextBuilder.buildContext(agentState);
-            AssistantMessageItem assistantMsg = model.call(context);
-            agentState.appendMsg(assistantMsg);
+            // TODO 这里需要记录callId，以便后续记录调用工具进行关联
+            ModelResp modelResp = model.call(new ArrayList<>(agentState.getHistories()), toolRegistry.getTools());
+            agentState.appendMsg(modelResp.getMessage());
 
-            if (assistantMsg.isEnd()) {
-                return assistantMsg.getContent();
+            if (modelResp.getAction() == ActionEnum.FINAL_ANSWER) {
+                return modelResp.getMessage().getContent();
             }
 
-            if (assistantMsg.isCallTool()) {
-                String toolRes = toolRegistry.call(assistantMsg.getToolCode(), new ArrayList<>());
-                MessageItem toolMsg = new ToolMessageItem(assistantMsg.getToolCode(), toolRes);
+            if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
+                String toolRes = toolRegistry.call(modelResp.getMessage().getToolCode(), new ArrayList<>());
+                MessageItem toolMsg = new ToolMessageItem("123", modelResp.getMessage().getToolCode(), toolRes);
                 agentState.appendMsg(toolMsg);
             }
 

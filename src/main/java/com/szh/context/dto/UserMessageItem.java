@@ -1,5 +1,7 @@
 package com.szh.context.dto;
 
+import com.szh.model.dto.ROLEEnum;
+
 /**
  * @author demussong
  * @describe
@@ -11,6 +13,11 @@ public class UserMessageItem implements MessageItem {
 
     public UserMessageItem(String content) {
         this.content = content;
+    }
+
+    @Override
+    public String role() {
+        return ROLEEnum.USER.getRole();
     }
 
     @Override

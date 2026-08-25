@@ -2,6 +2,10 @@ package com.szh.model;
 
 import com.szh.context.dto.AssistantMessageItem;
 import com.szh.context.dto.MessageItem;
+import com.szh.model.dto.ModelResp;
+import com.szh.tool.ToolDefinition;
+
+import java.util.List;
 
 /**
  * @author demussong
@@ -10,12 +14,16 @@ import com.szh.context.dto.MessageItem;
  */
 public class FakeModel implements Model{
     @Override
-    public AssistantMessageItem call(String prompt) {
+    public ModelResp call(
+            List<MessageItem> messages,
+            List<ToolDefinition> tools
+    ) {
+        String prompt = messages.get(messages.size() - 1).transfer2prompt();
 
         if (prompt.contains("晴朗")) {
-            return new AssistantMessageItem(true, false,"queryWeather","天气晴朗");
+            return new ModelResp(new AssistantMessageItem("天气晴朗"), null);
         } else {
-            return new AssistantMessageItem(false, true,"queryWeather","调用查询工具接口");
+            return new ModelResp(new AssistantMessageItem("queryWeather","23,43"), null);
 
         }
 
