@@ -10,6 +10,7 @@ import com.szh.context.dto.ToolMessageItem;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
 import com.szh.tool.ToolDefinition;
+import lombok.extern.slf4j.Slf4j;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -17,159 +18,74 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
 
-
+@Slf4j
 public class DeepSeekModel implements Model {
 
-
-    private static final String API_URL =
-            "https://api.deepseek.com/chat/completions";
-
+    private static final String API_URL = "https://api.deepseek.com/chat/completions";
 
     private final String apiKey;
 
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    private final ObjectMapper mapper =
-            new ObjectMapper();
-
-
-    private final HttpClient client =
-            HttpClient.newHttpClient();
-
-
+    private final HttpClient client = HttpClient.newHttpClient();
 
     public DeepSeekModel(String apiKey){
-
         this.apiKey = apiKey;
-
     }
 
-
-
     @Override
-    public ModelResp call(
-            List<MessageItem> messages,
-            List<ToolDefinition> tools
-    ){
-
+    public ModelResp call(List<MessageItem> messages, List<ToolDefinition> tools){
         try {
 
-
-            ObjectNode request =
-                    mapper.createObjectNode();
-
-
-            request.put(
-                    "model",
-                    "deepseek-chat"
-            );
-
-
+            ObjectNode request = mapper.createObjectNode();
+            request.put("model", "deepseek-chat");
             /*
              * MessageItem转换成DeepSeek messages
              */
-            request.set(
-                    "messages",
-                    convertMessages(messages)
-            );
-
+            request.set("messages", convertMessages(messages));
 
             /*
              * 工具定义
              */
-            if(tools != null &&
-                    !tools.isEmpty()){
-
-
-                request.set(
-                        "tools",
-                        convertTools(tools)
-                );
-
-
-                request.put(
-                        "tool_choice",
-                        "auto"
-                );
-
+            if(tools != null && !tools.isEmpty()){
+                request.set("tools", convertTools(tools));
+                request.put("tool_choice", "auto");
             }
-
-
 
             HttpRequest httpRequest =
                     HttpRequest.newBuilder()
-                            .uri(
-                                    URI.create(API_URL)
-                            )
-                            .header(
-                                    "Content-Type",
-                                    "application/json"
-                            )
-                            .header(
-                                    "Authorization",
-                                    "Bearer "+apiKey
-                            )
-                            .POST(
-                                    HttpRequest.BodyPublishers
-                                            .ofString(
-                                                    request.toString()
-                                            )
-                            )
+                            .uri(URI.create(API_URL))
+                            .header("Content-Type", "application/json")
+                            .header("Authorization", "Bearer "+apiKey)
+                            .POST(HttpRequest.BodyPublishers.ofString(request.toString()))
                             .build();
 
-
-
-            HttpResponse<String> response =
-                    client.send(
-                            httpRequest,
-                            HttpResponse.BodyHandlers.ofString()
-                    );
-
-
-
-            if(response.statusCode()!=200){
-
-                throw new RuntimeException(
-                        "deepseek error:"
-                                + response.body()
-                );
-
+            HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200){
+                log.error("deepseek error: {}", response.body());
+                throw new RuntimeException("deepseek error:" + response.body());
             }
-
-
-
             return parseResponse(response.body());
-        }catch(Exception e){
 
+        } catch(Exception e){
+            log.error("DeepSeek call failed", e);
             throw new RuntimeException("DeepSeek call failed", e);
-
         }
 
     }
-
-
-
-
 
     /**
      * MessageItem
      *
      * 转成DeepSeek messages
      */
-    private ArrayNode convertMessages(
-            List<MessageItem> items
-    ){
-
+    private ArrayNode convertMessages(List<MessageItem> items){
         ArrayNode array = mapper.createArrayNode();
 
         for(MessageItem item:items){
-
-            ObjectNode message =
-                    mapper.createObjectNode();
+            ObjectNode message = mapper.createObjectNode();
             message.put("role", item.role());
-            message.put(
-                    "content",
-                    item.transfer2prompt()
-            );
+            message.put("content", item.transfer2prompt());
 
             if (item instanceof AssistantMessageItem assistantItem && assistantItem.isCallTool()) {
                 message.putNull("content");
@@ -193,81 +109,31 @@ public class DeepSeekModel implements Model {
 
         }
         return array;
-
     }
-
-
 
     /**
      * Tool Definition
      *
      * 转DeepSeek function schema
      */
-    private ArrayNode convertTools(
-            List<ToolDefinition> tools
-    ) throws Exception{
-
+    private ArrayNode convertTools(List<ToolDefinition> tools) throws Exception{
 
         ArrayNode array = mapper.createArrayNode();
 
-
         for(ToolDefinition tool:tools){
+            ObjectNode function = mapper.createObjectNode();
 
+            function.put("name", tool.getName());
+            function.put("description", tool.getDescription());
+            function.set("parameters", mapper.readTree(tool.getParameters()));
 
-            ObjectNode function =
-                    mapper.createObjectNode();
-
-
-
-            function.put(
-                    "name",
-                    tool.getName()
-            );
-
-
-            function.put(
-                    "description",
-                    tool.getDescription()
-            );
-
-
-            function.set(
-                    "parameters",
-                    mapper.readTree(
-                            tool.getParameters()
-                    )
-            );
-
-
-
-            ObjectNode item =
-                    mapper.createObjectNode();
-
-
-            item.put(
-                    "type",
-                    "function"
-            );
-
-
-            item.set(
-                    "function",
-                    function
-            );
-
-
+            ObjectNode item = mapper.createObjectNode();
+            item.put("type", "function");
+            item.set("function", function);
             array.add(item);
-
         }
-
-
         return array;
-
     }
-
-
-
-
 
 
     /**
@@ -275,14 +141,9 @@ public class DeepSeekModel implements Model {
      *
      * 转AssistantMessageItem
      */
-    private ModelResp parseResponse(
-            String json
-    ) throws Exception{
-
-
+    private ModelResp parseResponse(String json) throws Exception{
         JsonNode root = mapper.readTree(json);
         JsonNode message = root.path("choices").get(0).path("message");
-
 
         /*
          * 工具调用
@@ -300,18 +161,13 @@ public class DeepSeekModel implements Model {
                     arguments
             );
 
-            return new ModelResp(
-                    assistantMessageItem,
-                    ActionEnum.TOOL_CALL
-            );
-
+            return new ModelResp(assistantMessageItem, ActionEnum.TOOL_CALL);
         }
 
         /*
          * 普通回答
          */
-        return new ModelResp(
-                new AssistantMessageItem(message.get("content").asText()),
+        return new ModelResp(new AssistantMessageItem(message.get("content").asText()),
                 ActionEnum.FINAL_ANSWER
         );
 
