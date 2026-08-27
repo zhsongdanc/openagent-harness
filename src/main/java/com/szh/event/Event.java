@@ -1,5 +1,6 @@
 package com.szh.event;
 
+import com.szh.context.dto.MessageItem;
 import com.szh.utils.CommonUtils;
 
 import java.time.Instant;
@@ -16,6 +17,8 @@ public abstract class Event {
     private Instant timestamp;
 
     protected String sessionId;
+
+    protected MessageItem messageItem;
 
     public Event() {
         this.id = CommonUtils.generateId();

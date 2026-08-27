@@ -1,5 +1,7 @@
 package com.szh.event;
 
+import com.szh.context.dto.MessageItem;
+
 import java.time.Instant;
 
 /**
@@ -7,12 +9,11 @@ import java.time.Instant;
  * @describe
  * @date 2026/8/27 14:16
  */
-public class UserMessageEvent extends Event {
+public class UserMessageEvent extends MessageEvent {
     private String userInput;
 
-    public UserMessageEvent(String sessionId, String userInput) {
-        super();
-        this.sessionId = sessionId;
+    public UserMessageEvent(MessageItem messageItem, String userInput) {
+        super(messageItem);
         this.userInput = userInput;
     }
 

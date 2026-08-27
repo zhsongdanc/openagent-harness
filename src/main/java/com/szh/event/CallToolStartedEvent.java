@@ -1,18 +1,19 @@
 package com.szh.event;
 
+import com.szh.context.dto.MessageItem;
+
 /**
  * @author demussong
  * @describe
  * @date 2026/8/27 14:27
  */
-public class CallToolStartedEvent extends Event {
+public class CallToolStartedEvent extends MessageEvent {
 
     private String toolName;
     private String parameters;
 
-    public CallToolStartedEvent(String sessionId, String toolName, String parameters) {
-        super();
-        this.sessionId = sessionId;
+    public CallToolStartedEvent(MessageItem messageItem, String toolName, String parameters) {
+        super(messageItem);
         this.toolName = toolName;
         this.parameters = parameters;
     }

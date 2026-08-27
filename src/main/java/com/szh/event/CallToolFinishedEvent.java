@@ -1,16 +1,18 @@
 package com.szh.event;
 
+import com.szh.context.dto.MessageItem;
+
 /**
  * @author demussong
  * @describe
  * @date 2026/8/27 14:27
  */
-public class CallToolFinishedEvent extends Event {
+public class CallToolFinishedEvent extends MessageEvent {
     private String toolName;
     private String output;
 
-    public CallToolFinishedEvent(String sessionId, String toolName, String output) {
-        super();
+    public CallToolFinishedEvent(MessageItem messageItem, String sessionId, String toolName, String output) {
+        super(messageItem);
         this.sessionId = sessionId;
         this.toolName = toolName;
         this.output = output;

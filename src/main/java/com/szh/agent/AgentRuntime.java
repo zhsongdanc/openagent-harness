@@ -3,10 +3,10 @@ package com.szh.agent;
 import com.szh.context.ContextBuilder;
 import com.szh.context.dto.*;
 import com.szh.event.*;
-import com.szh.model.FakeModel;
 import com.szh.model.Model;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
+import com.szh.store.MemoryEventStore;
 import com.szh.tool.ToolClient;
 import com.szh.tool.ToolRegistry;
 
@@ -21,7 +21,7 @@ public class AgentRuntime {
 
     private ToolRegistry toolRegistry;
 
-    private AgentState agentState = new AgentState();
+    private AgentState agentState = new AgentState(new MemoryEventStore());
 
     private Model model;
 
@@ -34,11 +34,11 @@ public class AgentRuntime {
 
     public String run(String userInput) {
 
-        agentState.recordEvent(new UserMessageEvent("",  userInput));
+        agentState.applyEvent(new RunStartedEvent());
 
         MessageItem messageItem = new UserMessageItem(userInput);
-        agentState.appendMsg(messageItem);
-
+        UserMessageEvent userMessageEvent = new UserMessageEvent(messageItem, userInput);
+        agentState.applyEvent(userMessageEvent);
 
         String res = "";
         int round = 0;
@@ -50,8 +50,8 @@ public class AgentRuntime {
             String context = ContextBuilder.buildContext(agentState);
             // TODO 这里需要记录callId，以便后续记录调用工具进行关联
             ModelResp modelResp = model.call(new ArrayList<>(agentState.getHistories()), toolRegistry.getTools());
-            agentState.appendMsg(modelResp.getMessage());
-            agentState.recordEvent(new CallModelFinishedEvent("",  modelResp.getMessage().getContent()));
+            ModelResponseEvent modelResponseEvent = new ModelResponseEvent(modelResp.getMessage(), "");
+            agentState.applyEvent(modelResponseEvent);
 
             if (modelResp.getAction() == ActionEnum.FINAL_ANSWER) {
                 res =  modelResp.getMessage().getContent();
@@ -60,14 +60,16 @@ public class AgentRuntime {
 
             if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
                 AssistantMessageItem toolMessage = modelResp.getMessage();
-                agentState.recordEvent(new CallToolStartedEvent("", toolMessage.getToolCode(), toolMessage.getToolArgs()));
+                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(toolMessage, toolMessage.getToolCode(), toolMessage.getToolArgs());
+                agentState.applyEvent(callToolStartedEvent);
                 String args = toolMessage.getToolArgs();
                 String toolRes = ToolClient.call(toolMessage.getToolCode(), args);
 
-                agentState.recordEvent(new CallToolFinishedEvent("", toolMessage.getToolCode(), toolRes));
+
                 String toolCallId = toolMessage.getToolCallId();
                 MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), toolRes);
-                agentState.appendMsg(toolMsg);
+                CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(toolMsg, "",toolMessage.getToolCode(), toolRes);
+                agentState.applyEvent(callToolFinishedEvent);
             }
 
         }
@@ -77,7 +79,7 @@ public class AgentRuntime {
         } else if (res == "") {
             res = "unknown error";
         }
-        agentState.recordEvent(new RunCompletedEvent("",  res));
+        agentState.applyEvent(new RunCompletedEvent("",  res));
         return res;
 
     }
