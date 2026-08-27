@@ -49,4 +49,8 @@ public class AgentState {
         this.turnId++;
     }
 
+    public EventStore getEventStore() {
+        return eventStore;
+    }
+
 }

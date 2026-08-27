@@ -12,8 +12,11 @@ public class CallToolStartedEvent extends Event {
     private String toolName;
     private String parameters;
 
-    public CallToolStartedEvent(String toolName, String parameters) {
+    public CallToolStartedEvent(String sessionId, String turnId,String toolName, String parameters) {
         super();
+        this.sessionId = sessionId;
+        this.turnId = turnId;
+
         this.toolName = toolName;
         this.parameters = parameters;
     }

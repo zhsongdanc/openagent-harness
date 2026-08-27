@@ -14,8 +14,5 @@ import java.util.List;
  */
 public interface Model {
 
-    public ModelResp call(
-            List<MessageItem> messages,
-            List<ToolDefinition> tools
-    );
+    public ModelResp call(List<MessageItem> messages, List<ToolDefinition> tools);
 }

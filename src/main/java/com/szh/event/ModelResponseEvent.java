@@ -10,9 +10,10 @@ import com.szh.context.dto.MessageItem;
 public class ModelResponseEvent extends MessageEvent {
     private String modelRes;
 
-    public ModelResponseEvent(MessageItem messageItem, String sessionId) {
+    public ModelResponseEvent(String sessionId, String turnId, MessageItem messageItem) {
         super(messageItem);
         this.sessionId = sessionId;
+        this.turnId = turnId;
     }
 
 

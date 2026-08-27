@@ -11,7 +11,7 @@ public class CallToolFinishedEvent extends MessageEvent {
     private String toolName;
     private String output;
 
-    public CallToolFinishedEvent(MessageItem messageItem, String sessionId, String toolName, String output) {
+    public CallToolFinishedEvent(String sessionId, String turnId, MessageItem messageItem, String toolName, String output) {
         super(messageItem);
         this.sessionId = sessionId;
         this.toolName = toolName;

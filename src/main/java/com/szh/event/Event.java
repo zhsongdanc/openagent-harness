@@ -18,6 +18,8 @@ public abstract class Event {
 
     protected String sessionId;
 
+    protected String turnId;
+
     protected MessageItem messageItem;
 
     public Event() {
@@ -25,9 +27,18 @@ public abstract class Event {
         this.timestamp = Instant.now();
     }
 
+    public abstract EventEnum getType();
+
+    public String getTurnId() {
+        return turnId;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
     public Instant getTimestamp() {
         return timestamp;
     }
 
-    public abstract EventEnum getType();
 }
