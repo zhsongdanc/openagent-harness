@@ -2,6 +2,7 @@ package com.szh.agent;
 
 import com.szh.context.ContextBuilder;
 import com.szh.context.dto.*;
+import com.szh.event.*;
 import com.szh.model.FakeModel;
 import com.szh.model.Model;
 import com.szh.model.dto.ActionEnum;
@@ -33,10 +34,13 @@ public class AgentRuntime {
 
     public String run(String userInput) {
 
+        agentState.recordEvent(new UserMessageEvent("",  userInput));
+
         MessageItem messageItem = new UserMessageItem(userInput);
         agentState.appendMsg(messageItem);
 
 
+        String res = "";
         int round = 0;
         while (true) {
             if (round > MAX_ROUND) {
@@ -47,21 +51,34 @@ public class AgentRuntime {
             // TODO 这里需要记录callId，以便后续记录调用工具进行关联
             ModelResp modelResp = model.call(new ArrayList<>(agentState.getHistories()), toolRegistry.getTools());
             agentState.appendMsg(modelResp.getMessage());
+            agentState.recordEvent(new CallModelFinishedEvent("",  modelResp.getMessage().getContent()));
 
             if (modelResp.getAction() == ActionEnum.FINAL_ANSWER) {
-                return modelResp.getMessage().getContent();
+                res =  modelResp.getMessage().getContent();
+                break;
             }
 
             if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
-                String args = modelResp.getMessage().getToolArgs();
-                String toolRes = ToolClient.call(modelResp.getMessage().getToolCode(), args);
-                String toolCallId = modelResp.getMessage().getToolCallId();
-                MessageItem toolMsg = new ToolMessageItem(toolCallId, modelResp.getMessage().getToolCode(), toolRes);
+                AssistantMessageItem toolMessage = modelResp.getMessage();
+                agentState.recordEvent(new CallToolStartedEvent("", toolMessage.getToolCode(), toolMessage.getToolArgs()));
+                String args = toolMessage.getToolArgs();
+                String toolRes = ToolClient.call(toolMessage.getToolCode(), args);
+
+                agentState.recordEvent(new CallToolFinishedEvent("", toolMessage.getToolCode(), toolRes));
+                String toolCallId = toolMessage.getToolCallId();
+                MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), toolRes);
                 agentState.appendMsg(toolMsg);
             }
 
         }
-        return "reach max round";
+
+        if (round > MAX_ROUND) {
+            res = "reach max round";
+        } else if (res == "") {
+            res = "unknown error";
+        }
+        agentState.recordEvent(new RunCompletedEvent("",  res));
+        return res;
 
     }
 }
