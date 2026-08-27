@@ -7,13 +7,13 @@ import com.szh.context.dto.MessageItem;
  * @describe
  * @date 2026/8/27 14:27
  */
-public class CallToolStartedEvent extends MessageEvent {
+public class CallToolStartedEvent extends Event {
 
     private String toolName;
     private String parameters;
 
-    public CallToolStartedEvent(MessageItem messageItem, String toolName, String parameters) {
-        super(messageItem);
+    public CallToolStartedEvent(String toolName, String parameters) {
+        super();
         this.toolName = toolName;
         this.parameters = parameters;
     }

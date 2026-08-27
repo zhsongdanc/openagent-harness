@@ -1,0 +1,49 @@
+package com.szh.agent;
+
+import com.szh.event.Event;
+import com.szh.model.DeepSeekModel;
+import com.szh.store.EventStore;
+import com.szh.store.MemoryEventStore;
+import com.szh.tool.ToolRegistry;
+import com.szh.utils.CommonUtils;
+
+import java.util.List;
+
+/**
+ * @author demussong
+ * @describe
+ * @date 2026/8/27 21:23
+ */
+public class AgentExecutor {
+
+    public String run(String userInput) {
+        return run("", userInput);
+    }
+
+    public String run(String sessionId, String userInput) {
+        AgentRuntime agentRuntime = null;
+
+        AgentState agentState = null;
+        if (sessionId == null || sessionId.isEmpty()) {
+            sessionId = CommonUtils.generateId();
+            agentState = new AgentState(new MemoryEventStore());
+        } else if (sessionSaved(sessionId)) {
+            agentState = recoverFromStore(sessionId);
+        } else {
+            throw new IllegalArgumentException("Session not found");
+        }
+
+        agentRuntime = new AgentRuntime(agentState, new ToolRegistry(), new DeepSeekModel(System.getenv("DEEPSEEK_API_KEY")));
+        return agentRuntime.run(sessionId, userInput);
+    }
+
+    public boolean sessionSaved(String sessionId) {
+        // 先MOCK
+        return false;
+    }
+
+    // TODO 先mock
+    public AgentState recoverFromStore(String sessionId) {
+        return new AgentState(new MemoryEventStore());
+    }
+}

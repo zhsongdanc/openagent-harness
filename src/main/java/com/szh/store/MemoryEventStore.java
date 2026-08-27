@@ -23,4 +23,9 @@ public class MemoryEventStore implements EventStore{
     public StoreEnum getStoreType() {
         return StoreEnum.MEMORY;
     }
+
+    @Override
+    public List<Event> getEvents() {
+        return events;
+    }
 }

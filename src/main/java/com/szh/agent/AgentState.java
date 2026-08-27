@@ -21,6 +21,8 @@ public class AgentState {
 
     private EventStore eventStore;
 
+    private int turnId = 0;
+
     public AgentState(EventStore eventStore){
         this.eventStore = eventStore;
         MessageItem messageItem = new SystemMessageItem("你是一个人工智能助手，请回答用户问题。下面是上下文：");
@@ -37,6 +39,14 @@ public class AgentState {
             MessageItem messageItem = ((MessageEvent) event).getMessageItem();
             histories.add(messageItem);
         }
+    }
+
+    public int getTurnId() {
+        return turnId;
+    }
+
+    public void incrementTurnId() {
+        this.turnId++;
     }
 
 }

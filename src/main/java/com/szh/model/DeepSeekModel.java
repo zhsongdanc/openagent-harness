@@ -137,17 +137,10 @@ public class DeepSeekModel implements Model {
 
 
 
-            return parseResponse(
-                    response.body()
-            );
-
-
+            return parseResponse(response.body());
         }catch(Exception e){
 
-            throw new RuntimeException(
-                    "DeepSeek call failed",
-                    e
-            );
+            throw new RuntimeException("DeepSeek call failed", e);
 
         }
 

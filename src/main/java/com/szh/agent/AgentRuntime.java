@@ -9,6 +9,7 @@ import com.szh.model.dto.ModelResp;
 import com.szh.store.MemoryEventStore;
 import com.szh.tool.ToolClient;
 import com.szh.tool.ToolRegistry;
+import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
 
@@ -25,14 +26,15 @@ public class AgentRuntime {
 
     private Model model;
 
-    public AgentRuntime(ToolRegistry toolRegistry, Model model) {
+    public AgentRuntime(AgentState agentState, ToolRegistry toolRegistry, Model model) {
         this.toolRegistry = toolRegistry;
         this.model = model;
     }
 
     public static int MAX_ROUND = 100;
 
-    public String run(String userInput) {
+    public String run(String sessionId, String userInput) {
+        agentState.incrementTurnId();
 
         agentState.applyEvent(new RunStartedEvent());
 
@@ -60,7 +62,7 @@ public class AgentRuntime {
 
             if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
                 AssistantMessageItem toolMessage = modelResp.getMessage();
-                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(toolMessage, toolMessage.getToolCode(), toolMessage.getToolArgs());
+                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(toolMessage.getToolCode(), toolMessage.getToolArgs());
                 agentState.applyEvent(callToolStartedEvent);
                 String args = toolMessage.getToolArgs();
                 String toolRes = ToolClient.call(toolMessage.getToolCode(), args);
@@ -82,5 +84,13 @@ public class AgentRuntime {
         agentState.applyEvent(new RunCompletedEvent("",  res));
         return res;
 
+    }
+
+    public boolean isNew() {
+        return CollectionUtils.isEmpty(agentState.getHistories());
+    }
+
+    public void recoverState(AgentState agentState) {
+        this.agentState = agentState; // Recovering the agent state
     }
 }

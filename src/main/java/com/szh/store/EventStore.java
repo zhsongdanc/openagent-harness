@@ -2,6 +2,8 @@ package com.szh.store;
 
 import com.szh.event.Event;
 
+import java.util.List;
+
 /**
  * @author demussong
  * @describe
@@ -12,4 +14,6 @@ public interface EventStore {
     public void appendEvent(Event event);
 
     public StoreEnum getStoreType();
+
+    public List<Event> getEvents();
 }

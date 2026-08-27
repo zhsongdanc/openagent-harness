@@ -1,5 +1,6 @@
 package com.szh;
 
+import com.szh.agent.AgentExecutor;
 import com.szh.agent.AgentRuntime;
 import com.szh.context.dto.AssistantMessageItem;
 import com.szh.context.dto.MessageItem;
@@ -9,6 +10,7 @@ import com.szh.model.FakeModel;
 import com.szh.model.dto.ModelResp;
 import com.szh.tool.ToolDefinition;
 import com.szh.tool.ToolRegistry;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 
@@ -17,6 +19,8 @@ import java.util.List;
  * @describe
  * @date 2026/8/24 17:47
  */
+
+@Slf4j
 public class Test {
     public static void main(String[] args) {
 
@@ -25,9 +29,8 @@ public class Test {
 
     public static void testAgentRuntime() {
         String userInput = "我的ip是10.13.12.15,帮我查询一下当前天气";
-
-        AgentRuntime agentRuntime = new AgentRuntime(new ToolRegistry(), new DeepSeekModel(System.getenv("DEEPSEEK_API_KEY")));
-        String reply = agentRuntime.run(userInput);
+        AgentExecutor agentExecutor = new AgentExecutor();
+        String reply = agentExecutor.run(userInput);
         System.out.println(reply);
     }
 
@@ -42,6 +45,7 @@ public class Test {
     }
 
     public static void testApiKey() {
+        log.info("print log test");
         System.out.println(System.getenv("DEEPSEEK_API_KEY"));
     }
 }
