@@ -1,12 +1,14 @@
 package com.szh.context.dto;
 
 import com.szh.model.dto.ROLEEnum;
+import lombok.Data;
 
 /**
  * @author demussong
  * @describe
  * @date 2026/8/25 13:53
  */
+@Data
 public class ToolMessageItem implements MessageItem {
 
     private String callId;

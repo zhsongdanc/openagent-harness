@@ -9,20 +9,27 @@ import java.util.List;
  */
 public class ToolRegistry {
 
-    public String call(String code, List<Object> args) {
-        return "天气晴朗";
+    private List<ToolDefinition> tools;
+
+    public ToolRegistry() {
+        ToolDefinition queryLocation = ToolDefinition.builder()
+                .name("queryLocation")
+                .code("queryLocation")
+                .description("根据用户ip查询用户当前位置，返回json格式的经度和维度")
+                .parameters("{\"type\":\"object\",\"properties\":{\"ip\":{\"type\":\"string\",\"description\":\"字符串类型的用户ip\"}},\"required\":[\"ip\"]}")
+                .build();
+        ToolDefinition queryWeather = ToolDefinition.builder()
+                .name("queryWeather")
+                .code("queryWeather")
+                .description("根据用户经度和维度查询用户当前天气，返回字符串格式的天气信息")
+                .parameters("{\"type\":\"object\",\"properties\":{\"longitude\":{\"type\":\"number\",\"description\":\"用户经度\"},\"latitude\":{\"type\":\"number\",\"description\":\"用户纬度\"}},\"required\":[\"longitude\",\"latitude\"]}")
+                .build();
+
+        tools = List.of(queryLocation, queryWeather);
     }
 
+
     public List<ToolDefinition> getTools() {
-        return List.of(
-                ToolDefinition.builder()
-                        .name("tool1")
-                        .code("code1")
-                        .description("description1")
-                        .type("type1")
-                        .parameters("parameters1")
-                        .output("output1")
-                        .build()
-        );
+        return tools;
     }
 }

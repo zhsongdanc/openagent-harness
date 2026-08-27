@@ -12,8 +12,9 @@ import lombok.Data;
 public class AssistantMessageItem implements MessageItem {
 
     private boolean callTool;
+    private String toolCallId;
     private String toolCode;
-    private String toolArguments;
+    private String toolArgs;
     private String content;
 
 
@@ -21,10 +22,11 @@ public class AssistantMessageItem implements MessageItem {
         this.content = content;
     }
 
-    public AssistantMessageItem(String toolCode, String toolArguments) {
+    public AssistantMessageItem(String toolCallId, String toolCode, String toolArgs) {
         this.callTool = true;
+        this.toolCallId = toolCallId;
         this.toolCode = toolCode;
-        this.toolArguments = toolArguments;
+        this.toolArgs = toolArgs;
     }
 
 
@@ -36,7 +38,7 @@ public class AssistantMessageItem implements MessageItem {
     @Override
     public String transfer2prompt() {
         if (callTool) {
-            return "现在需要调用工具" + toolCode + "参数：" + toolArguments;
+            return "现在需要调用工具" + toolCode + "参数：" + toolArgs;
         } else {
             return content;
         }

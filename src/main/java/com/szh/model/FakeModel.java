@@ -23,7 +23,7 @@ public class FakeModel implements Model{
         if (prompt.contains("晴朗")) {
             return new ModelResp(new AssistantMessageItem("天气晴朗"), null);
         } else {
-            return new ModelResp(new AssistantMessageItem("queryWeather","23,43"), null);
+            return new ModelResp(new AssistantMessageItem("333","queryWeather","23,43"), null);
 
         }
 

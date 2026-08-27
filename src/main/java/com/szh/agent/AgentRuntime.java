@@ -6,6 +6,7 @@ import com.szh.model.FakeModel;
 import com.szh.model.Model;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
+import com.szh.tool.ToolClient;
 import com.szh.tool.ToolRegistry;
 
 import java.util.ArrayList;
@@ -52,8 +53,10 @@ public class AgentRuntime {
             }
 
             if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
-                String toolRes = toolRegistry.call(modelResp.getMessage().getToolCode(), new ArrayList<>());
-                MessageItem toolMsg = new ToolMessageItem("123", modelResp.getMessage().getToolCode(), toolRes);
+                String args = modelResp.getMessage().getToolArgs();
+                String toolRes = ToolClient.call(modelResp.getMessage().getToolCode(), args);
+                String toolCallId = modelResp.getMessage().getToolCallId();
+                MessageItem toolMsg = new ToolMessageItem(toolCallId, modelResp.getMessage().getToolCode(), toolRes);
                 agentState.appendMsg(toolMsg);
             }
 

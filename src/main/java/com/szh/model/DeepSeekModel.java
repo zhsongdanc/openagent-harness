@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.szh.context.dto.AssistantMessageItem;
 import com.szh.context.dto.MessageItem;
+import com.szh.context.dto.ToolMessageItem;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
 import com.szh.tool.ToolDefinition;
@@ -177,6 +178,23 @@ public class DeepSeekModel implements Model {
                     item.transfer2prompt()
             );
 
+            if (item instanceof AssistantMessageItem assistantItem && assistantItem.isCallTool()) {
+                message.putNull("content");
+                ArrayNode toolCallsArray = mapper.createArrayNode();
+                ObjectNode toolCall = mapper.createObjectNode();
+                toolCall.put("id", assistantItem.getToolCallId());
+                toolCall.put("type", "function");
+                ObjectNode function = mapper.createObjectNode();
+                function.put("name", assistantItem.getToolCode());
+                function.put("arguments", assistantItem.getToolArgs());
+                toolCall.set("function", function);
+                toolCallsArray.add(toolCall);
+                message.set("tool_calls", toolCallsArray);
+            }
+
+            if (item instanceof ToolMessageItem toolItem) {
+                message.put("tool_call_id", toolItem.getCallId());
+            }
 
             array.add(message);
 
@@ -282,8 +300,9 @@ public class DeepSeekModel implements Model {
             JsonNode function = toolCalls.get(0).get("function");
             String toolName = function.get("name").asText();
             String arguments = function.get("arguments").asText();
-
+            String toolCallId = toolCalls.get(0).get("id").asText();
             AssistantMessageItem assistantMessageItem = new AssistantMessageItem(
+                    toolCallId,
                     toolName,
                     arguments
             );

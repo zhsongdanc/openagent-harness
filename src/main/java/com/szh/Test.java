@@ -20,39 +20,28 @@ import java.util.List;
 public class Test {
     public static void main(String[] args) {
 
-        testModel();
+        testAgentRuntime();
     }
 
     public static void testAgentRuntime() {
-        String userInput = "hello";
+        String userInput = "我的ip是10.13.12.15,帮我查询一下当前天气";
 
-        AgentRuntime agentRuntime = new AgentRuntime(new ToolRegistry(), new FakeModel());
+        AgentRuntime agentRuntime = new AgentRuntime(new ToolRegistry(), new DeepSeekModel(System.getenv("DEEPSEEK_API_KEY")));
         String reply = agentRuntime.run(userInput);
-        System.out.println(reply);
-
-
-        String reply2 = agentRuntime.run(userInput);
         System.out.println(reply);
     }
 
     public static void testModel() {
-        DeepSeekModel model = new DeepSeekModel("");
-        ToolDefinition queryLocation = ToolDefinition.builder()
-                .name("queryLocation")
-                .code("queryLocation")
-                .description("根据用户ip查询用户当前位置，返回json格式的经度和维度")
-                .parameters("{\"type\":\"object\",\"properties\":{\"ip\":{\"type\":\"string\",\"description\":\"字符串类型的用户ip\"}},\"required\":[\"ip\"]}")
-                .build();
-        ToolDefinition queryWeather = ToolDefinition.builder()
-                .name("queryWeather")
-                .code("queryWeather")
-                .description("根据用户经度和维度查询用户当前天气，返回字符串格式的天气信息")
-                .parameters("{\"type\":\"object\",\"properties\":{\"longitude\":{\"type\":\"number\",\"description\":\"用户经度\"},\"latitude\":{\"type\":\"number\",\"description\":\"用户纬度\"}},\"required\":[\"longitude\",\"latitude\"]}")
-                .build();
+        DeepSeekModel model = new DeepSeekModel(System.getenv("DEEPSEEK_API_KEY"));
 
+        ToolRegistry toolRegistry = new ToolRegistry();
 
         ModelResp modelResp = model.call(List.of(new UserMessageItem("我的ip是10.13.12.15,帮我查询一下当前天气")),
-                List.of(queryLocation, queryWeather));
+                toolRegistry.getTools());
         System.out.println(modelResp.getMessage().getContent());
+    }
+
+    public static void testApiKey() {
+        System.out.println(System.getenv("DEEPSEEK_API_KEY"));
     }
 }
