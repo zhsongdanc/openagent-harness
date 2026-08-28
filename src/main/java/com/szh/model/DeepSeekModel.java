@@ -9,6 +9,7 @@ import com.szh.context.dto.MessageItem;
 import com.szh.context.dto.ToolMessageItem;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
+import com.szh.tool.Tool;
 import com.szh.tool.ToolDefinition;
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,7 +35,7 @@ public class DeepSeekModel implements Model {
     }
 
     @Override
-    public ModelResp call(List<MessageItem> messages, List<ToolDefinition> tools){
+    public ModelResp call(List<MessageItem> messages, List<Tool> tools){
         try {
 
             ObjectNode request = mapper.createObjectNode();
@@ -116,16 +117,17 @@ public class DeepSeekModel implements Model {
      *
      * 转DeepSeek function schema
      */
-    private ArrayNode convertTools(List<ToolDefinition> tools) throws Exception{
+    private ArrayNode convertTools(List<Tool> tools) throws Exception{
 
         ArrayNode array = mapper.createArrayNode();
 
-        for(ToolDefinition tool:tools){
+        for(Tool tool:tools){
+            ToolDefinition toolDefinition = tool.getToolDefinition();
             ObjectNode function = mapper.createObjectNode();
 
-            function.put("name", tool.getName());
-            function.put("description", tool.getDescription());
-            function.set("parameters", mapper.readTree(tool.getParameters()));
+            function.put("name", toolDefinition.getName());
+            function.put("description", toolDefinition.getDescription());
+            function.set("parameters", mapper.readTree(toolDefinition.getParameters()));
 
             ObjectNode item = mapper.createObjectNode();
             item.put("type", "function");

@@ -19,7 +19,6 @@ public class ToolDefinition {
     // shell
     private String type;
     private String parameters;
-    private String output;
 
 
 }

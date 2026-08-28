@@ -1,9 +1,8 @@
 package com.szh.model;
 
-import com.szh.context.dto.AssistantMessageItem;
 import com.szh.context.dto.MessageItem;
 import com.szh.model.dto.ModelResp;
-import com.szh.tool.ToolDefinition;
+import com.szh.tool.Tool;
 
 import java.util.List;
 
@@ -14,5 +13,5 @@ import java.util.List;
  */
 public interface Model {
 
-    public ModelResp call(List<MessageItem> messages, List<ToolDefinition> tools);
+    public ModelResp call(List<MessageItem> messages, List<Tool> tools);
 }

@@ -1,5 +1,8 @@
 package com.szh.tool;
 
+import com.szh.tool.tools.QueryLocationTool;
+import com.szh.tool.tools.QueryWeatherTool;
+
 import java.util.List;
 
 /**
@@ -9,7 +12,7 @@ import java.util.List;
  */
 public class ToolRegistry {
 
-    private List<ToolDefinition> tools;
+    private List<Tool> tools;
 
     public ToolRegistry() {
         ToolDefinition queryLocation = ToolDefinition.builder()
@@ -18,18 +21,32 @@ public class ToolRegistry {
                 .description("根据用户ip查询用户当前位置，返回json格式的经度和维度")
                 .parameters("{\"type\":\"object\",\"properties\":{\"ip\":{\"type\":\"string\",\"description\":\"字符串类型的用户ip\"}},\"required\":[\"ip\"]}")
                 .build();
+
+        QueryLocationTool locationTool = new QueryLocationTool("queryLocation", queryLocation);
+
+
         ToolDefinition queryWeather = ToolDefinition.builder()
                 .name("queryWeather")
                 .code("queryWeather")
                 .description("根据用户经度和维度查询用户当前天气，返回字符串格式的天气信息")
                 .parameters("{\"type\":\"object\",\"properties\":{\"longitude\":{\"type\":\"number\",\"description\":\"用户经度\"},\"latitude\":{\"type\":\"number\",\"description\":\"用户纬度\"}},\"required\":[\"longitude\",\"latitude\"]}")
                 .build();
+        QueryWeatherTool weatherTool = new QueryWeatherTool("queryWeather", queryWeather);
 
-        tools = List.of(queryLocation, queryWeather);
+        tools = List.of(locationTool, weatherTool);
     }
 
 
-    public List<ToolDefinition> getTools() {
+    public List<Tool> getTools() {
         return tools;
+    }
+
+    public Tool getToolByCode(String toolCode) {
+        for (Tool tool : tools) {
+            if (tool.getCode().equals(toolCode)) {
+                return tool;
+            }
+        }
+        return null;
     }
 }

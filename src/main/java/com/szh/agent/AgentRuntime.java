@@ -7,7 +7,7 @@ import com.szh.model.Model;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
 import com.szh.store.MemoryEventStore;
-import com.szh.tool.ToolClient;
+import com.szh.tool.Tool;
 import com.szh.tool.ToolRegistry;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
@@ -44,10 +44,9 @@ public class AgentRuntime {
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
 
-        agentState.applyEvent(new RunStartedEvent());
-
+        agentState.applyEvent(new RunStartedEvent(sessionId, turnId));
         MessageItem messageItem = new UserMessageItem(userInput);
-        UserMessageEvent userMessageEvent = new UserMessageEvent(messageItem, userInput);
+        UserMessageEvent userMessageEvent = new UserMessageEvent(sessionId, turnId, messageItem, userInput);
         agentState.applyEvent(userMessageEvent);
 
         String res = "";
@@ -56,6 +55,7 @@ public class AgentRuntime {
             if (round > MAX_ROUND) {
                 break;
             }
+            round++;
 
             String context = ContextBuilder.buildContext(agentState);
             // TODO 这里需要记录callId，以便后续记录调用工具进行关联
@@ -74,7 +74,8 @@ public class AgentRuntime {
                         toolMessage.getToolCode(), toolMessage.getToolArgs());
                 agentState.applyEvent(callToolStartedEvent);
                 String args = toolMessage.getToolArgs();
-                String toolRes = ToolClient.call(toolMessage.getToolCode(), args);
+                Tool tool = toolRegistry.getToolByCode(toolMessage.getToolCode());
+                String toolRes = tool.execute(args);
 
 
                 String toolCallId = toolMessage.getToolCallId();
