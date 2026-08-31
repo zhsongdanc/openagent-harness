@@ -9,6 +9,9 @@ import com.szh.model.dto.ModelResp;
 import com.szh.store.MemoryEventStore;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolRegistry;
+import com.szh.trace.RunTrace;
+import com.szh.trace.StepTrace;
+import com.szh.utils.CommonUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +44,9 @@ public class AgentRuntime {
     public static int MAX_ROUND = 100;
 
     public String run(String sessionId, String userInput) {
+        String runId = CommonUtils.generateId();
+        RunTrace runTrace = new RunTrace(runId, sessionId, System.currentTimeMillis());
+
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
 
@@ -52,6 +58,8 @@ public class AgentRuntime {
         String res = "";
         int round = 0;
         while (true) {
+            long roundStart = System.currentTimeMillis();
+
             if (round > MAX_ROUND) {
                 break;
             }
@@ -65,6 +73,9 @@ public class AgentRuntime {
 
             if (modelResp.getAction() == ActionEnum.FINAL_ANSWER) {
                 res =  modelResp.getMessage().getContent();
+
+                StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+                runTrace.addStepTrace(stepTrace);
                 break;
             }
 
@@ -84,7 +95,8 @@ public class AgentRuntime {
                         toolMessage.getToolCode(), toolRes);
                 agentState.applyEvent(callToolFinishedEvent);
             }
-
+            StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+            runTrace.addStepTrace(stepTrace);
         }
 
         if (round > MAX_ROUND) {
@@ -93,6 +105,8 @@ public class AgentRuntime {
             res = "unknown error";
         }
         agentState.applyEvent(new RunCompletedEvent(sessionId,  res));
+        runTrace.setEndTime(System.currentTimeMillis());
+        runTrace.printTraceByRunId(runId);
         return res;
 
     }
