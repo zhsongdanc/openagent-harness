@@ -75,7 +75,7 @@ public class AgentResponseRuntime {
             long roundStart = System.currentTimeMillis();
 
             ResponseModelResp modelResp = model.call(
-                    new ArrayList<>(agentState.getHistories()), toolRegistry.getTools());
+                    new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
 
             boolean anyToolCall = false;
             String lastMessage = null;

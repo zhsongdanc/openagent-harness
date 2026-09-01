@@ -14,7 +14,7 @@ public class ContextBuilder {
 
     public static String buildContext(AgentState agentState) {
 
-        List<MessageItem> histories = agentState.getHistories();
+        List<MessageItem> histories = agentState.getModelContext();
 
         StringBuilder prompt = new StringBuilder();
         histories.forEach(messageItem -> {

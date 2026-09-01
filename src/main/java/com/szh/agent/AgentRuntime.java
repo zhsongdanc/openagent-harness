@@ -67,7 +67,7 @@ public class AgentRuntime {
 
             String context = ContextBuilder.buildContext(agentState);
             // TODO 这里需要记录callId，以便后续记录调用工具进行关联
-            ModelResp modelResp = model.call(new ArrayList<>(agentState.getHistories()), toolRegistry.getTools());
+            ModelResp modelResp = model.call(new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
             ModelResponseEvent modelResponseEvent = new ModelResponseEvent(sessionId, turnId, modelResp.getMessage());
             agentState.applyEvent(modelResponseEvent);
 
