@@ -11,9 +11,11 @@ public class CallToolFinishedEvent extends MessageEvent {
     private String toolName;
     private String output;
 
-    public CallToolFinishedEvent(String sessionId, String turnId, MessageItem messageItem, String toolName, String output) {
+    public CallToolFinishedEvent(String sessionId, String runId, String turnId, MessageItem messageItem, String toolName, String output) {
         super(messageItem);
         this.sessionId = sessionId;
+        this.runId = runId;
+        this.turnId = turnId;
         this.toolName = toolName;
         this.output = output;
     }

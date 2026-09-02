@@ -2,6 +2,9 @@ package com.szh.event;
 
 import com.szh.context.dto.MessageItem;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * @author demussong
  * @describe
@@ -12,9 +15,10 @@ public class CallToolStartedEvent extends Event {
     private String toolName;
     private String parameters;
 
-    public CallToolStartedEvent(String sessionId, String turnId,String toolName, String parameters) {
+    public CallToolStartedEvent(String sessionId, String runId, String turnId, String toolName, String parameters) {
         super();
         this.sessionId = sessionId;
+        this.runId = runId;
         this.turnId = turnId;
 
         this.toolName = toolName;
@@ -32,5 +36,13 @@ public class CallToolStartedEvent extends Event {
     @Override
     public EventEnum getType() {
         return EventEnum.CALL_TOOL_STARTED;
+    }
+
+    @Override
+    public Object payloadData() {
+        Map<String, String> data = new HashMap<>();
+        data.put("toolName", toolName);
+        data.put("parameters", parameters);
+        return data;
     }
 }

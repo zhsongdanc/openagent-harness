@@ -25,7 +25,7 @@ public class MemoryEventStore implements EventStore{
     }
 
     @Override
-    public List<Event> getEvents() {
-        return events;
+    public List<Event> getEvents(String sessionId) {
+        return events.stream().filter(event -> event.getSessionId().equals(sessionId)).toList();
     }
 }

@@ -5,14 +5,13 @@ import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.baomidou.mybatisplus.core.toolkit.reflect.GenericTypeUtils;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.szh.utils.ConfigUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
 
 import javax.sql.DataSource;
-import java.io.InputStream;
-import java.util.Properties;
 
 /**
  * @author demussong
@@ -21,6 +20,8 @@ import java.util.Properties;
  */
 @Slf4j
 public class MyBatisPlusHolder {
+
+    private static final String DB_CONFIG_FILE = "db.properties";
 
     static {
 
@@ -52,20 +53,10 @@ public class MyBatisPlusHolder {
     }
 
     private static DataSource buildDataSource() {
-        Properties props = new Properties();
-        try (InputStream in = MyBatisPlusHolder.class.getClassLoader().getResourceAsStream("db.properties")) {
-            if (in == null) {
-                throw new IllegalStateException("db.properties not found in classpath");
-            }
-            props.load(in);
-        } catch (Exception e) {
-            throw new IllegalStateException("load db.properties failed", e);
-        }
-
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(props.getProperty("db.url"));
-        config.setUsername(props.getProperty("db.username"));
-        config.setPassword(props.getProperty("db.password"));
+        config.setJdbcUrl(ConfigUtil.requireFromFile(DB_CONFIG_FILE, "db.url"));
+        config.setUsername(ConfigUtil.requireFromFile(DB_CONFIG_FILE, "db.username"));
+        config.setPassword(ConfigUtil.getFromFile(DB_CONFIG_FILE, "db.password", ""));
         config.setMaximumPoolSize(8);
         config.setPoolName("agent-event-pool");
         return new HikariDataSource(config);

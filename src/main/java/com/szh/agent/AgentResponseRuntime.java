@@ -60,10 +60,10 @@ public class AgentResponseRuntime {
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
 
-        agentState.applyEvent(new RunStartedEvent(sessionId, turnId));
-        agentState.applyEvent(new UserMessageEvent(sessionId, turnId, new UserMessageItem(userInput), userInput));
+        agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId));
+        agentState.applyEvent(new UserMessageEvent(sessionId, runId, turnId, new UserMessageItem(userInput), userInput));
 
-        HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, turnId);
+        HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, runId, turnId);
 
         String res = "";
         int round = 0;
@@ -105,7 +105,7 @@ public class AgentResponseRuntime {
         } else if (Objects.equals(res, "")) {
             res = "unknown error";
         }
-        agentState.applyEvent(new RunCompletedEvent(sessionId, res));
+        agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, res));
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         return res;
@@ -115,8 +115,8 @@ public class AgentResponseRuntime {
         return "turn_" + turnId;
     }
 
-    public void printLog() {
-        List<Event> events = agentState.getEventStore().getEvents();
+    public void printLog(String sessionId) {
+        List<Event> events = agentState.getEventStore().getEvents(sessionId);
         if (CollectionUtils.isEmpty(events)) {
             log.info("no events recorded");
             return;

@@ -9,9 +9,11 @@ package com.szh.event;
 public class RunCompletedEvent extends Event {
     private String result;
 
-    public RunCompletedEvent(String sessionId, String result) {
+    public RunCompletedEvent(String sessionId, String runId, String turnId, String result) {
         super();
         this.sessionId = sessionId;
+        this.runId = runId;
+        this.turnId = turnId;
         this.result = result;
     }
 
@@ -22,5 +24,10 @@ public class RunCompletedEvent extends Event {
     @Override
     public EventEnum getType() {
         return EventEnum.RUN_COMPLETED;
+    }
+
+    @Override
+    public Object payloadData() {
+        return result;
     }
 }

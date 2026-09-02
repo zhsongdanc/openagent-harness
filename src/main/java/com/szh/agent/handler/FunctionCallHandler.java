@@ -32,10 +32,10 @@ public class FunctionCallHandler implements OutputItemHandler {
         AssistantMessageItem toolCallMessage = new AssistantMessageItem(
                 functionCall.getCallId(), functionCall.getName(), functionCall.getArguments());
         context.getAgentState().applyEvent(new ModelResponseEvent(
-                context.getSessionId(), context.getTurnId(), toolCallMessage));
+                context.getSessionId(), context.getRunId(), context.getTurnId(), toolCallMessage));
 
         context.getAgentState().applyEvent(new CallToolStartedEvent(
-                context.getSessionId(), context.getTurnId(),
+                context.getSessionId(), context.getRunId(), context.getTurnId(),
                 functionCall.getName(), functionCall.getArguments()));
 
         String toolRes;
@@ -50,7 +50,7 @@ public class FunctionCallHandler implements OutputItemHandler {
         MessageItem toolMsg = new ToolMessageItem(
                 functionCall.getCallId(), functionCall.getName(), toolRes);
         context.getAgentState().applyEvent(new CallToolFinishedEvent(
-                context.getSessionId(), context.getTurnId(), toolMsg,
+                context.getSessionId(), context.getRunId(), context.getTurnId(), toolMsg,
                 functionCall.getName(), toolRes));
 
         return HandleResult.toolCall();

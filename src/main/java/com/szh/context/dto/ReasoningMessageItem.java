@@ -2,6 +2,7 @@
 package com.szh.context.dto;
 
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * @author demussong
@@ -9,6 +10,7 @@ import lombok.Data;
  * @date 2026/8/31
  */
 @Data
+@NoArgsConstructor
 public class ReasoningMessageItem implements MessageItem {
 
     private String content;

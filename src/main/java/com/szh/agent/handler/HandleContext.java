@@ -21,5 +21,7 @@ public class HandleContext {
 
     private String sessionId;
 
+    private String runId;
+
     private String turnId;
 }

@@ -15,5 +15,5 @@ public interface EventStore {
 
     public StoreEnum getStoreType();
 
-    public List<Event> getEvents();
+    public List<Event> getEvents(String sessionId);
 }

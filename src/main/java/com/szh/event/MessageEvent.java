@@ -18,4 +18,9 @@ public abstract class MessageEvent extends Event {
     public MessageItem getMessageItem() {
         return messageItem;
     }
+
+    @Override
+    public Object payloadData() {
+        return messageItem;
+    }
 }

@@ -10,9 +10,10 @@ import com.szh.context.dto.MessageItem;
  */
 public class ReasoningEvent extends MessageEvent {
 
-    public ReasoningEvent(String sessionId, String turnId, MessageItem messageItem) {
+    public ReasoningEvent(String sessionId, String runId, String turnId, MessageItem messageItem) {
         super(messageItem);
         this.sessionId = sessionId;
+        this.runId = runId;
         this.turnId = turnId;
     }
 

@@ -24,7 +24,7 @@ import java.util.List;
 public class Test {
     public static void main(String[] args) {
 
-        testEventCrud();
+        testResumeResponseAgent();
     }
 
     public static void testAgentRuntime() {
@@ -37,15 +37,20 @@ public class Test {
     public static void testResponseAgent() {
         String userInput = "我的ip是10.13.12.15,帮我查询一下当前天气";
         AgentResponseExecutor agentExecutor = new AgentResponseExecutor();
-        String reply = agentExecutor.run(userInput);
+        String reply = agentExecutor.runNewSession(userInput);
+        System.out.println(reply);
+    }
+
+    public static void testResumeResponseAgent() {
+        String sessionId = "f890a8f6fa404233a1f46998591611be";
+        AgentResponseExecutor agentExecutor = new AgentResponseExecutor();
+        String reply = agentExecutor.runExistsSession(sessionId, "你猜测我是哪里人");
         System.out.println(reply);
     }
 
     public static void testModel() {
         DeepSeekResponseModel model = new DeepSeekResponseModel(System.getenv("DEEPSEEK_API_KEY"));
-
         ToolRegistry toolRegistry = new ToolRegistry();
-
         ResponseModelResp responseModelResp = model.call(List.of(new UserMessageItem("我的ip是10.13.12.15,帮我查询一下当前天气")),
                 toolRegistry.getTools());
         System.out.println("success");

@@ -2,6 +2,7 @@ package com.szh.context.dto;
 
 import com.szh.model.dto.ROLEEnum;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * @author demussong
@@ -9,6 +10,7 @@ import lombok.Data;
  * @date 2026/8/25 13:53
  */
 @Data
+@NoArgsConstructor
 public class ToolMessageItem implements MessageItem {
 
     private String callId;

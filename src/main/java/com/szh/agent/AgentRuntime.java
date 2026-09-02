@@ -6,7 +6,6 @@ import com.szh.event.*;
 import com.szh.model.Model;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
-import com.szh.store.MemoryEventStore;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolRegistry;
 import com.szh.trace.RunTrace;
@@ -32,11 +31,12 @@ public class AgentRuntime {
 
     private ToolRegistry toolRegistry;
 
-    private AgentState agentState = new AgentState(new MemoryEventStore());
+    private AgentState agentState;
 
     private Model model;
 
     public AgentRuntime(AgentState agentState, ToolRegistry toolRegistry, Model model) {
+        this.agentState = agentState;
         this.toolRegistry = toolRegistry;
         this.model = model;
     }
@@ -50,9 +50,9 @@ public class AgentRuntime {
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
 
-        agentState.applyEvent(new RunStartedEvent(sessionId, turnId));
+        agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId));
         MessageItem messageItem = new UserMessageItem(userInput);
-        UserMessageEvent userMessageEvent = new UserMessageEvent(sessionId, turnId, messageItem, userInput);
+        UserMessageEvent userMessageEvent = new UserMessageEvent(sessionId, runId, turnId, messageItem, userInput);
         agentState.applyEvent(userMessageEvent);
 
         String res = "";
@@ -68,7 +68,7 @@ public class AgentRuntime {
             String context = ContextBuilder.buildContext(agentState);
             // TODO 这里需要记录callId，以便后续记录调用工具进行关联
             ModelResp modelResp = model.call(new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
-            ModelResponseEvent modelResponseEvent = new ModelResponseEvent(sessionId, turnId, modelResp.getMessage());
+            ModelResponseEvent modelResponseEvent = new ModelResponseEvent(sessionId, runId, turnId, modelResp.getMessage());
             agentState.applyEvent(modelResponseEvent);
 
             if (modelResp.getAction() == ActionEnum.FINAL_ANSWER) {
@@ -81,7 +81,7 @@ public class AgentRuntime {
 
             if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
                 AssistantMessageItem toolMessage = modelResp.getMessage();
-                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(sessionId, turnId,
+                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(sessionId, runId, turnId,
                         toolMessage.getToolCode(), toolMessage.getToolArgs());
                 agentState.applyEvent(callToolStartedEvent);
                 String args = toolMessage.getToolArgs();
@@ -91,7 +91,7 @@ public class AgentRuntime {
 
                 String toolCallId = toolMessage.getToolCallId();
                 MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), toolRes);
-                CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, turnId, toolMsg,
+                CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, runId, turnId, toolMsg,
                         toolMessage.getToolCode(), toolRes);
                 agentState.applyEvent(callToolFinishedEvent);
             }
@@ -104,7 +104,7 @@ public class AgentRuntime {
         } else if (Objects.equals(res, "")) {
             res = "unknown error";
         }
-        agentState.applyEvent(new RunCompletedEvent(sessionId,  res));
+        agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, res));
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         return res;
@@ -115,8 +115,8 @@ public class AgentRuntime {
         return "turn_" + turnId;
     }
 
-    public void printLog() {
-        List<Event> events = agentState.getEventStore().getEvents();
+    public void printLog(String sessionId) {
+        List<Event> events = agentState.getEventStore().getEvents(sessionId);
         if (CollectionUtils.isEmpty(events)) {
             log.info("no events recorded");
             return;

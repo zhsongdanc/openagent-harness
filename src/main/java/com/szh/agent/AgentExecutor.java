@@ -3,7 +3,7 @@ package com.szh.agent;
 import com.szh.event.Event;
 import com.szh.model.DeepSeekModel;
 import com.szh.store.EventStore;
-import com.szh.store.MemoryEventStore;
+import com.szh.store.EventStoreFactory;
 import com.szh.tool.ToolRegistry;
 import com.szh.utils.CommonUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +29,7 @@ public class AgentExecutor {
         if (sessionId == null || sessionId.isEmpty()) {
             sessionId = CommonUtils.generateId();
             log.info("New session created: {}", sessionId);
-            agentState = new AgentState(new MemoryEventStore());
+            agentState = new AgentState(EventStoreFactory.createEventStore());
         } else if (sessionSaved(sessionId)) {
             agentState = recoverFromStore(sessionId);
         } else {
@@ -38,7 +38,7 @@ public class AgentExecutor {
 
         agentRuntime = new AgentRuntime(agentState, new ToolRegistry(), new DeepSeekModel(System.getenv("DEEPSEEK_API_KEY")));
         String res = agentRuntime.run(sessionId, userInput);
-        agentRuntime.printLog();
+        agentRuntime.printLog(sessionId);
         return res;
     }
 
@@ -49,6 +49,6 @@ public class AgentExecutor {
 
     // TODO 先mock
     public AgentState recoverFromStore(String sessionId) {
-        return new AgentState(new MemoryEventStore());
+        return new AgentState(EventStoreFactory.createEventStore());
     }
 }
