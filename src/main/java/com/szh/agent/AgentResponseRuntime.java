@@ -20,6 +20,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -77,6 +78,8 @@ public class AgentResponseRuntime {
 
             ResponseModelResp modelResp = model.call(
                     new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
+            String currentTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(System.currentTimeMillis());
+            log.info("call model, round:{}, current time: {}", round, currentTime);
 
             boolean anyToolCall = false;
             String lastMessage = null;

@@ -8,7 +8,6 @@ import com.szh.context.dto.MessageItem;
  * @date 2026/8/27 14:27
  */
 public class ModelResponseEvent extends MessageEvent {
-    private String modelRes;
 
     public ModelResponseEvent(String sessionId, String runId, String turnId, int round, MessageItem messageItem) {
         super(messageItem);
