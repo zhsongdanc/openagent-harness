@@ -11,5 +11,5 @@ public interface Tool {
 
     public ToolDefinition getToolDefinition();
 
-    public String execute(String args);
+    public String execute(ToolContext toolContext);
 }

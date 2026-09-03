@@ -1,4 +1,4 @@
-package com.szh;
+package com.szh.test;
 
 import com.szh.agent.AgentExecutor;
 import com.szh.agent.AgentResponseExecutor;
@@ -24,7 +24,8 @@ import java.util.List;
 public class Test {
     public static void main(String[] args) {
 
-        testResumeResponseAgent();
+        testApiKey();
+//        testResumeResponseAgent();
     }
 
     public static void testAgentRuntime() {
@@ -59,6 +60,7 @@ public class Test {
     public static void testApiKey() {
         log.info("print log test");
         System.out.println(System.getenv("DEEPSEEK_API_KEY"));
+        System.out.println(System.getProperty("user.dir"));
     }
 
     public static void testEventCrud() {

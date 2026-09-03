@@ -10,6 +10,7 @@ import com.szh.event.ModelResponseEvent;
 import com.szh.model.dto.output.FunctionCallOutputItem;
 import com.szh.model.dto.output.OutputItem;
 import com.szh.tool.Tool;
+import com.szh.tool.ToolContext;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -32,10 +33,10 @@ public class FunctionCallHandler implements OutputItemHandler {
         AssistantMessageItem toolCallMessage = new AssistantMessageItem(
                 functionCall.getCallId(), functionCall.getName(), functionCall.getArguments());
         context.getAgentState().applyEvent(new ModelResponseEvent(
-                context.getSessionId(), context.getRunId(), context.getTurnId(), toolCallMessage));
+                context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(), toolCallMessage));
 
         context.getAgentState().applyEvent(new CallToolStartedEvent(
-                context.getSessionId(), context.getRunId(), context.getTurnId(),
+                context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(),
                 functionCall.getName(), functionCall.getArguments()));
 
         String toolRes;
@@ -44,13 +45,13 @@ public class FunctionCallHandler implements OutputItemHandler {
             log.warn("tool not found: {}", functionCall.getName());
             toolRes = "tool not found: " + functionCall.getName();
         } else {
-            toolRes = tool.execute(functionCall.getArguments());
+            toolRes = tool.execute(new ToolContext(functionCall.getArguments()));
         }
 
         MessageItem toolMsg = new ToolMessageItem(
                 functionCall.getCallId(), functionCall.getName(), toolRes);
         context.getAgentState().applyEvent(new CallToolFinishedEvent(
-                context.getSessionId(), context.getRunId(), context.getTurnId(), toolMsg,
+                context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(), toolMsg,
                 functionCall.getName(), toolRes));
 
         return HandleResult.toolCall();

@@ -9,11 +9,12 @@ import java.util.Map;
  */
 public class RunStartedEvent extends Event {
 
-    public RunStartedEvent(String sessionId, String runId, String turnId) {
+    public RunStartedEvent(String sessionId, String runId, String turnId, int round) {
         super();
         this.sessionId = sessionId;
         this.runId = runId;
         this.turnId = turnId;
+        this.round = round;
     }
 
     @Override

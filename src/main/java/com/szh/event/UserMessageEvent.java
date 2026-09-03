@@ -12,11 +12,12 @@ import java.time.Instant;
 public class UserMessageEvent extends MessageEvent {
     private String userInput;
 
-    public UserMessageEvent(String sessionId, String runId, String turnId, MessageItem messageItem, String userInput) {
+    public UserMessageEvent(String sessionId, String runId, String turnId, int round, MessageItem messageItem, String userInput) {
         super(messageItem);
         this.sessionId = sessionId;
         this.runId = runId;
         this.turnId = turnId;
+        this.round = round;
         this.userInput = userInput;
     }
 

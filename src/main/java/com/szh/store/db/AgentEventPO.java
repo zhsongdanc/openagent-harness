@@ -27,6 +27,11 @@ public class AgentEventPO {
 
     private String turnId;
 
+    /**
+     * 事件所属轮次序号，对应 agent_event.round，轮次外的事件为 0
+     */
+    private Integer round;
+
     private String eventType;
 
     private Integer eventVersion;

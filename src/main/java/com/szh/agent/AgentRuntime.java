@@ -7,6 +7,7 @@ import com.szh.model.Model;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
 import com.szh.tool.Tool;
+import com.szh.tool.ToolContext;
 import com.szh.tool.ToolRegistry;
 import com.szh.trace.RunTrace;
 import com.szh.trace.StepTrace;
@@ -50,9 +51,9 @@ public class AgentRuntime {
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
 
-        agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId));
+        agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId, 0));
         MessageItem messageItem = new UserMessageItem(userInput);
-        UserMessageEvent userMessageEvent = new UserMessageEvent(sessionId, runId, turnId, messageItem, userInput);
+        UserMessageEvent userMessageEvent = new UserMessageEvent(sessionId, runId, turnId, 0, messageItem, userInput);
         agentState.applyEvent(userMessageEvent);
 
         String res = "";
@@ -68,7 +69,7 @@ public class AgentRuntime {
             String context = ContextBuilder.buildContext(agentState);
             // TODO 这里需要记录callId，以便后续记录调用工具进行关联
             ModelResp modelResp = model.call(new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
-            ModelResponseEvent modelResponseEvent = new ModelResponseEvent(sessionId, runId, turnId, modelResp.getMessage());
+            ModelResponseEvent modelResponseEvent = new ModelResponseEvent(sessionId, runId, turnId, round, modelResp.getMessage());
             agentState.applyEvent(modelResponseEvent);
 
             if (modelResp.getAction() == ActionEnum.FINAL_ANSWER) {
@@ -81,17 +82,17 @@ public class AgentRuntime {
 
             if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
                 AssistantMessageItem toolMessage = modelResp.getMessage();
-                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(sessionId, runId, turnId,
+                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(sessionId, runId, turnId, round,
                         toolMessage.getToolCode(), toolMessage.getToolArgs());
                 agentState.applyEvent(callToolStartedEvent);
                 String args = toolMessage.getToolArgs();
                 Tool tool = toolRegistry.getToolByCode(toolMessage.getToolCode());
-                String toolRes = tool.execute(args);
+                String toolRes = tool.execute(new ToolContext(toolMessage.getToolArgs()));
 
 
                 String toolCallId = toolMessage.getToolCallId();
                 MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), toolRes);
-                CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, runId, turnId, toolMsg,
+                CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, runId, turnId, round, toolMsg,
                         toolMessage.getToolCode(), toolRes);
                 agentState.applyEvent(callToolFinishedEvent);
             }
@@ -104,7 +105,7 @@ public class AgentRuntime {
         } else if (Objects.equals(res, "")) {
             res = "unknown error";
         }
-        agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, res));
+        agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, round, res));
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         return res;

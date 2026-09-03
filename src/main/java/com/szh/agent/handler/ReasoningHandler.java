@@ -23,7 +23,7 @@ public class ReasoningHandler implements OutputItemHandler {
         ReasoningOutputItem reasoning = (ReasoningOutputItem) item;
         ReasoningMessageItem messageItem = new ReasoningMessageItem(reasoning.getContent());
         context.getAgentState().applyEvent(new ReasoningEvent(
-                context.getSessionId(), context.getRunId(), context.getTurnId(), messageItem));
+                context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(), messageItem));
         return HandleResult.none();
     }
 }

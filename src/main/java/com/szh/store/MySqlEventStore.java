@@ -71,6 +71,7 @@ public class MySqlEventStore implements EventStore {
         agentEventPO.setSessionId(event.getSessionId());
         agentEventPO.setRunId(event.getRunId());
         agentEventPO.setTurnId(event.getTurnId());
+        agentEventPO.setRound(event.getRound());
         agentEventPO.setEventType(event.getType().name());
         agentEventPO.setEventVersion(DEFAULT_EVENT_VERSION);
         // 每个事件自带完整数据，统一序列化进 payload（不再只认 MessageEvent）
@@ -86,32 +87,33 @@ public class MySqlEventStore implements EventStore {
         String sessionId = agentEventPO.getSessionId();
         String runId = agentEventPO.getRunId();
         String turnId = agentEventPO.getTurnId();
+        int round = agentEventPO.getRound() == null ? 0 : agentEventPO.getRound();
         String payload = readPayload(agentEventPO);
 
         // 按 eventType 把 payload 反序列化回对应数据，重建完整事件
         Event event = switch (eventType) {
-            case RUN_STARTED -> new RunStartedEvent(sessionId, runId, turnId);
+            case RUN_STARTED -> new RunStartedEvent(sessionId, runId, turnId, round);
             case USER_INPUT -> {
                 UserMessageItem user = JsonUtil.parse(payload, UserMessageItem.class);
-                yield new UserMessageEvent(sessionId, runId, turnId, user,
+                yield new UserMessageEvent(sessionId, runId, turnId, round, user,
                         user == null ? null : user.getContent());
             }
-            case CALL_MODEL_FINISHED -> new ModelResponseEvent(sessionId, runId, turnId,
+            case CALL_MODEL_FINISHED -> new ModelResponseEvent(sessionId, runId, turnId, round,
                     JsonUtil.parse(payload, AssistantMessageItem.class));
-            case MODEL_REASONING -> new ReasoningEvent(sessionId, runId, turnId,
+            case MODEL_REASONING -> new ReasoningEvent(sessionId, runId, turnId, round,
                     JsonUtil.parse(payload, ReasoningMessageItem.class));
             case CALL_TOOL_STARTED -> {
                 Map<String, String> data = parseToolStarted(payload);
-                yield new CallToolStartedEvent(sessionId, runId, turnId,
+                yield new CallToolStartedEvent(sessionId, runId, turnId, round,
                         data.get("toolName"), data.get("parameters"));
             }
             case CALL_TOOL_FINISHED -> {
                 ToolMessageItem tool = JsonUtil.parse(payload, ToolMessageItem.class);
-                yield new CallToolFinishedEvent(sessionId, runId, turnId, tool,
+                yield new CallToolFinishedEvent(sessionId, runId, turnId, round, tool,
                         tool == null ? null : tool.getToolCode(),
                         tool == null ? null : tool.getExecResult());
             }
-            case RUN_COMPLETED -> new RunCompletedEvent(sessionId, runId, turnId,
+            case RUN_COMPLETED -> new RunCompletedEvent(sessionId, runId, turnId, round,
                     JsonUtil.parse(payload, String.class));
         };
         event.setId(stripEventId(agentEventPO.getEventId()));

@@ -2,7 +2,17 @@ package com.szh.tool;
 
 import com.szh.tool.tools.QueryLocationTool;
 import com.szh.tool.tools.QueryWeatherTool;
+import com.szh.tool.tools.shell.CatTool;
+import com.szh.tool.tools.shell.FindTool;
+import com.szh.tool.tools.shell.GitTool;
+import com.szh.tool.tools.shell.GrepTool;
+import com.szh.tool.tools.shell.HeadTool;
+import com.szh.tool.tools.shell.ListFileTool;
+import com.szh.tool.tools.shell.MvnTool;
+import com.szh.tool.tools.shell.PwdTool;
+import com.szh.tool.tools.shell.TailTool;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -15,25 +25,27 @@ public class ToolRegistry {
     private List<Tool> tools;
 
     public ToolRegistry() {
-        ToolDefinition queryLocation = ToolDefinition.builder()
-                .name("queryLocation")
-                .code("queryLocation")
-                .description("根据用户ip查询用户当前位置，返回json格式的经度和维度")
-                .parameters("{\"type\":\"object\",\"properties\":{\"ip\":{\"type\":\"string\",\"description\":\"字符串类型的用户ip\"}},\"required\":[\"ip\"]}")
-                .build();
+        QueryLocationTool locationTool = new QueryLocationTool();
+        QueryWeatherTool weatherTool = new QueryWeatherTool();
 
-        QueryLocationTool locationTool = new QueryLocationTool("queryLocation", queryLocation);
+        // shell 工具的定义内置在各自工具类中，这里只负责注册，按需增删
+        List<Tool> shellTools = List.of(
+                new PwdTool(),
+                new ListFileTool(),
+                new FindTool(),
+                new CatTool(),
+                new HeadTool(),
+                new TailTool(),
+                new GrepTool(),
+                new GitTool(),
+                new MvnTool());
 
+        List<Tool> allTools = new ArrayList<>();
+        allTools.add(locationTool);
+        allTools.add(weatherTool);
+        allTools.addAll(shellTools);
 
-        ToolDefinition queryWeather = ToolDefinition.builder()
-                .name("queryWeather")
-                .code("queryWeather")
-                .description("根据用户经度和维度查询用户当前天气，返回字符串格式的天气信息")
-                .parameters("{\"type\":\"object\",\"properties\":{\"longitude\":{\"type\":\"number\",\"description\":\"用户经度\"},\"latitude\":{\"type\":\"number\",\"description\":\"用户纬度\"}},\"required\":[\"longitude\",\"latitude\"]}")
-                .build();
-        QueryWeatherTool weatherTool = new QueryWeatherTool("queryWeather", queryWeather);
-
-        tools = List.of(locationTool, weatherTool);
+        tools = List.copyOf(allTools);
     }
 
 

@@ -68,7 +68,7 @@ public class DeepSeekResponseModel implements ResponseModel {
 
             HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                log.error("DeepSeek Responses API error: {}", response.body());
+                log.error("DeepSeek Responses API error: {},req:{}", response.body(), request.toString());
                 throw new RuntimeException("DeepSeek Responses API error: " + response.body());
             }
             return parseResponse(response.body());
@@ -87,51 +87,81 @@ public class DeepSeekResponseModel implements ResponseModel {
      * - 工具调用: {type: "function_call", call_id, name, arguments}
      * - 工具结果: {type: "function_call_output", call_id, output}
      * - 思维链: {type: "reasoning", content}
+     *
+     * 注意：DeepSeek 要求同一轮内所有 function_call 必须连续排在一起、function_call_output
+     * 统一跟在其后，不能交错。否则下一次请求会报
+     * "The reasoning_text in the thinking mode must be passed back to the API"。
+     * 这里先把 function_call_output 缓存起来，遇到非 function_call/output 的 item 时 flush。
      */
     private ArrayNode convertInput(List<MessageItem> items) {
         ArrayNode array = mapper.createArrayNode();
+        List<ObjectNode> pendingOutputs = new ArrayList<>();
 
         for (MessageItem item : items) {
-            if (item instanceof AssistantMessageItem assistantItem && assistantItem.isCallTool()) {
-                ObjectNode functionCall = mapper.createObjectNode();
-                functionCall.put("type", "function_call");
-                functionCall.put("call_id", assistantItem.getToolCallId());
-                functionCall.put("name", assistantItem.getToolCode());
-                functionCall.put("arguments", assistantItem.getToolArgs());
-                array.add(functionCall);
-
-            } else if (item instanceof ToolMessageItem toolItem) {
-                ObjectNode functionOutput = mapper.createObjectNode();
-                functionOutput.put("type", "function_call_output");
-                functionOutput.put("call_id", toolItem.getCallId());
-                functionOutput.put("output", toolItem.getExecResult());
-                array.add(functionOutput);
-
-            } else if (item instanceof ReasoningMessageItem reasoningItem) {
-                ObjectNode reasoning = mapper.createObjectNode();
-                reasoning.put("type", "reasoning");
-                ArrayNode contentArray = mapper.createArrayNode();
-                ObjectNode contentBlock = mapper.createObjectNode();
-                contentBlock.put("type", "reasoning_text");
-                contentBlock.put("text", reasoningItem.getContent());
-                contentArray.add(contentBlock);
-                reasoning.set("content", contentArray);
-                array.add(reasoning);
-
+            if (item instanceof ToolMessageItem toolItem) {
+                pendingOutputs.add(buildFunctionOutput(toolItem));
+            } else if (item instanceof AssistantMessageItem assistantItem && assistantItem.isCallTool()) {
+                array.add(buildFunctionCall(assistantItem));
             } else {
-                ObjectNode message = mapper.createObjectNode();
-                message.put("type", "message");
-                message.put("role", item.role());
-                ArrayNode contentArray = mapper.createArrayNode();
-                ObjectNode contentBlock = mapper.createObjectNode();
-                contentBlock.put("type", "input_text");
-                contentBlock.put("text", item.transfer2prompt());
-                contentArray.add(contentBlock);
-                message.set("content", contentArray);
-                array.add(message);
+                flushPendingOutputs(array, pendingOutputs);
+                if (item instanceof ReasoningMessageItem reasoningItem) {
+                    array.add(buildReasoning(reasoningItem));
+                } else {
+                    array.add(buildMessage(item));
+                }
             }
         }
+        flushPendingOutputs(array, pendingOutputs);
         return array;
+    }
+
+    private void flushPendingOutputs(ArrayNode array, List<ObjectNode> pendingOutputs) {
+        for (ObjectNode output : pendingOutputs) {
+            array.add(output);
+        }
+        pendingOutputs.clear();
+    }
+
+    private ObjectNode buildFunctionCall(AssistantMessageItem assistantItem) {
+        ObjectNode functionCall = mapper.createObjectNode();
+        functionCall.put("type", "function_call");
+        functionCall.put("call_id", assistantItem.getToolCallId());
+        functionCall.put("name", assistantItem.getToolCode());
+        functionCall.put("arguments", assistantItem.getToolArgs());
+        return functionCall;
+    }
+
+    private ObjectNode buildFunctionOutput(ToolMessageItem toolItem) {
+        ObjectNode functionOutput = mapper.createObjectNode();
+        functionOutput.put("type", "function_call_output");
+        functionOutput.put("call_id", toolItem.getCallId());
+        functionOutput.put("output", toolItem.getExecResult());
+        return functionOutput;
+    }
+
+    private ObjectNode buildReasoning(ReasoningMessageItem reasoningItem) {
+        ObjectNode reasoning = mapper.createObjectNode();
+        reasoning.put("type", "reasoning");
+        ArrayNode contentArray = mapper.createArrayNode();
+        ObjectNode contentBlock = mapper.createObjectNode();
+        contentBlock.put("type", "reasoning_text");
+        contentBlock.put("text", reasoningItem.getContent());
+        contentArray.add(contentBlock);
+        reasoning.set("content", contentArray);
+        return reasoning;
+    }
+
+    private ObjectNode buildMessage(MessageItem item) {
+        ObjectNode message = mapper.createObjectNode();
+        message.put("type", "message");
+        message.put("role", item.role());
+        ArrayNode contentArray = mapper.createArrayNode();
+        ObjectNode contentBlock = mapper.createObjectNode();
+        contentBlock.put("type", "input_text");
+        contentBlock.put("text", item.transfer2prompt());
+        contentArray.add(contentBlock);
+        message.set("content", contentArray);
+        return message;
     }
 
     /**

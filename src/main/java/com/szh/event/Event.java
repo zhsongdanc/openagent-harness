@@ -22,6 +22,11 @@ public abstract class Event {
 
     protected String turnId;
 
+    /**
+     * 该事件所属的轮次序号，run 内自增；轮次之外的事件（如 RUN_STARTED/USER_INPUT）记为 0
+     */
+    protected int round;
+
     protected MessageItem messageItem;
 
     public Event() {
@@ -48,6 +53,10 @@ public abstract class Event {
 
     public String getTurnId() {
         return turnId;
+    }
+
+    public int getRound() {
+        return round;
     }
 
     public String getSessionId() {

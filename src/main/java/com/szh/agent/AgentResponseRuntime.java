@@ -36,7 +36,7 @@ public class AgentResponseRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(AgentResponseRuntime.class);
 
-    public static int MAX_ROUND = 100;
+    public static int MAX_ROUND = 200;
 
     private final ToolRegistry toolRegistry;
 
@@ -60,10 +60,10 @@ public class AgentResponseRuntime {
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
 
-        agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId));
-        agentState.applyEvent(new UserMessageEvent(sessionId, runId, turnId, new UserMessageItem(userInput), userInput));
+        agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId, 0));
+        agentState.applyEvent(new UserMessageEvent(sessionId, runId, turnId, 0, new UserMessageItem(userInput), userInput));
 
-        HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, runId, turnId);
+        HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, runId, turnId, 0);
 
         String res = "";
         int round = 0;
@@ -72,6 +72,7 @@ public class AgentResponseRuntime {
                 break;
             }
             round++;
+            handleContext.setRound(round);
             long roundStart = System.currentTimeMillis();
 
             ResponseModelResp modelResp = model.call(
@@ -105,7 +106,7 @@ public class AgentResponseRuntime {
         } else if (Objects.equals(res, "")) {
             res = "unknown error";
         }
-        agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, res));
+        agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, round, res));
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         return res;
@@ -128,12 +129,13 @@ public class AgentResponseRuntime {
         log.info("===== Event Log (total: {}) =====", sorted.size());
         for (int i = 0; i < sorted.size(); i++) {
             Event event = sorted.get(i);
-            log.info("[{}] {} | time: {} | sessionId: {} | turnId: {}",
+            log.info("[{}] {} | time: {} | sessionId: {} | turnId: {} | round: {}",
                     i + 1,
                     event.getType(),
                     event.getTimestamp(),
                     event.getSessionId(),
-                    event.getTurnId());
+                    event.getTurnId(),
+                    event.getRound());
         }
         log.info("===== End Event Log =====");
     }

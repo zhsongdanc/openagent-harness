@@ -22,7 +22,7 @@ public class MessageHandler implements OutputItemHandler {
     public HandleResult handle(OutputItem item, HandleContext context) {
         MessageOutputItem message = (MessageOutputItem) item;
         context.getAgentState().applyEvent(new ModelResponseEvent(
-                context.getSessionId(), context.getRunId(), context.getTurnId(),
+                context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(),
                 new AssistantMessageItem(message.getContent())));
         return HandleResult.message(message.getContent());
     }

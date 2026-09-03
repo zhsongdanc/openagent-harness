@@ -9,11 +9,12 @@ package com.szh.event;
 public class RunCompletedEvent extends Event {
     private String result;
 
-    public RunCompletedEvent(String sessionId, String runId, String turnId, String result) {
+    public RunCompletedEvent(String sessionId, String runId, String turnId, int round, String result) {
         super();
         this.sessionId = sessionId;
         this.runId = runId;
         this.turnId = turnId;
+        this.round = round;
         this.result = result;
     }
 

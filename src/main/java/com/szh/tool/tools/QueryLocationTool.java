@@ -8,33 +8,36 @@ package com.szh.tool.tools;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.szh.tool.Tool;
+import com.szh.tool.ToolContext;
 import com.szh.tool.ToolDefinition;
 import com.szh.tool.dto.Location;
+import com.szh.tool.tools.local.LocalTool;
 
-public class QueryLocationTool implements Tool {
+public class QueryLocationTool implements LocalTool {
 
-    private String code;
-    private ToolDefinition toolDefinition;
-    public QueryLocationTool(String code, ToolDefinition toolDefinition) {
-        this.code = code;
-        this.toolDefinition = toolDefinition;
-    }
+
+    public QueryLocationTool() {}
     @Override
     public String getCode() {
-        return code;
+        return "queryLocation";
     }
 
     @Override
     public ToolDefinition getToolDefinition() {
-        return toolDefinition;
+        return ToolDefinition.builder()
+                .name("queryLocation")
+                .code("queryLocation")
+                .description("根据用户ip查询用户当前位置，返回json格式的经度和维度")
+                .parameters("{\"type\":\"object\",\"properties\":{\"ip\":{\"type\":\"string\",\"description\":\"字符串类型的用户ip\"}},\"required\":[\"ip\"]}")
+                .build();
     }
 
     @Override
-    public String execute(String args) {
+    public String execute(ToolContext toolContext) {
         ObjectMapper objectMapper = new ObjectMapper();
         String ip = null;
         try {
-            com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(args);
+            com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(toolContext.getArgs());
             ip = node.has("ip") ? node.get("ip").asText() : null;
         } catch (JsonProcessingException e) {
             e.printStackTrace();
