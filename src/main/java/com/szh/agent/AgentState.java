@@ -40,6 +40,14 @@ public class AgentState {
         return modelContext;
     }
 
+    /**
+     * 压缩后替换整个 modelContext（保留 system prompt 位置）
+     */
+    public void replaceModelContext(List<MessageItem> newContext) {
+        log.info("AgentState: replacing modelContext, size {} -> {}", modelContext.size(), newContext.size());
+        this.modelContext = newContext;
+    }
+
     public void applyEvent(Event event) {
         // 事件日志是唯一真相源，先落库
         boolean durable = true;

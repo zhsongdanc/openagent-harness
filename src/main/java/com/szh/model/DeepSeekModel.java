@@ -9,6 +9,7 @@ import com.szh.context.dto.MessageItem;
 import com.szh.context.dto.ToolMessageItem;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
+import com.szh.model.dto.TokenUsage;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolDefinition;
 import lombok.extern.slf4j.Slf4j;
@@ -147,6 +148,9 @@ public class DeepSeekModel implements Model {
         JsonNode root = mapper.readTree(json);
         JsonNode message = root.path("choices").get(0).path("message");
 
+        // 解析 token 用量
+        TokenUsage tokenUsage = parseTokenUsage(root);
+
         /*
          * 工具调用
          */
@@ -163,16 +167,35 @@ public class DeepSeekModel implements Model {
                     arguments
             );
 
-            return new ModelResp(assistantMessageItem, ActionEnum.TOOL_CALL);
+            ModelResp resp = new ModelResp(assistantMessageItem, ActionEnum.TOOL_CALL);
+            resp.setTokenUsage(tokenUsage);
+            return resp;
         }
 
         /*
          * 普通回答
          */
-        return new ModelResp(new AssistantMessageItem(message.get("content").asText()),
+        ModelResp resp = new ModelResp(new AssistantMessageItem(message.get("content").asText()),
                 ActionEnum.FINAL_ANSWER
         );
+        resp.setTokenUsage(tokenUsage);
+        return resp;
 
+    }
+
+    /**
+     * 解析服务端返回的 usage 字段
+     */
+    private TokenUsage parseTokenUsage(JsonNode root) {
+        JsonNode usage = root.path("usage");
+        if (usage.isMissingNode()) {
+            return null;
+        }
+        int promptTokens = usage.path("prompt_tokens").asInt(0);
+        int completionTokens = usage.path("completion_tokens").asInt(0);
+        int totalTokens = usage.path("total_tokens").asInt(0);
+        int cachedTokens = usage.path("prompt_tokens_details").path("cached_tokens").asInt(0);
+        return new TokenUsage(promptTokens, completionTokens, totalTokens, cachedTokens);
     }
 
 }

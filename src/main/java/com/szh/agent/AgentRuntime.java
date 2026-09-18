@@ -1,6 +1,9 @@
 package com.szh.agent;
 
 import com.szh.context.ContextBuilder;
+import com.szh.context.compaction.ContextCompactionManager;
+import com.szh.context.compaction.ModelSummarizer;
+import com.szh.context.compaction.StepCompactor;
 import com.szh.context.dto.*;
 import com.szh.event.*;
 import com.szh.model.Model;
@@ -9,9 +12,12 @@ import com.szh.model.dto.ModelResp;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolContext;
 import com.szh.tool.ToolRegistry;
+import com.szh.tool.store.ToolResultStore;
 import com.szh.trace.RunTrace;
 import com.szh.trace.StepTrace;
+import com.szh.trace.TokenTracker;
 import com.szh.utils.CommonUtils;
+import com.szh.utils.ConfigUtil;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,10 +42,26 @@ public class AgentRuntime {
 
     private Model model;
 
+    private TokenTracker tokenTracker;
+
+    private ContextCompactionManager compactionManager;
+
+    private ToolResultStore toolResultStore;
+
     public AgentRuntime(AgentState agentState, ToolRegistry toolRegistry, Model model) {
         this.agentState = agentState;
         this.toolRegistry = toolRegistry;
         this.model = model;
+        this.tokenTracker = new TokenTracker();
+        this.compactionManager = new ContextCompactionManager(new ModelSummarizer(model), tokenTracker);
+    }
+
+    /**
+     * 初始化本次 run 的工具结果存储。在 run() 开始时调用，需要 sessionId 确定存储目录。
+     */
+    private void initToolResultStore(String sessionId) {
+        String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        this.toolResultStore = new ToolResultStore(workspace, sessionId);
     }
 
     public static int MAX_ROUND = 100;
@@ -47,6 +69,8 @@ public class AgentRuntime {
     public String run(String sessionId, String userInput) {
         String runId = CommonUtils.generateId();
         RunTrace runTrace = new RunTrace(runId, sessionId, System.currentTimeMillis());
+        runTrace.setTokenTracker(tokenTracker);
+        initToolResultStore(sessionId);
 
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
@@ -66,9 +90,21 @@ public class AgentRuntime {
             }
             round++;
 
+            // 上下文压缩检查：在调用 model 前判断是否需要压缩
+            int ctxTokens = StepCompactor.estimateTotalTokens(agentState.getModelContext());
+            log.info("[Round {}] 上下文状态: 消息数={}, 估算tokens={}", round, agentState.getModelContext().size(), ctxTokens);
+            List<MessageItem> compacted = compactionManager.maybeCompact(new ArrayList<>(agentState.getModelContext()));
+            if (compacted.size() != agentState.getModelContext().size()) {
+                log.info("[Round {}] >>> 压缩已执行: 消息数 {} -> {} <<<", round, agentState.getModelContext().size(), compacted.size());
+                agentState.replaceModelContext(compacted);
+            }
+
             String context = ContextBuilder.buildContext(agentState);
-            // TODO 这里需要记录callId，以便后续记录调用工具进行关联
             ModelResp modelResp = model.call(new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
+
+            // 记录 token 用量
+            tokenTracker.recordRound(modelResp.getTokenUsage());
+
             ModelResponseEvent modelResponseEvent = new ModelResponseEvent(sessionId, runId, turnId, round, modelResp.getMessage());
             agentState.applyEvent(modelResponseEvent);
 
@@ -76,6 +112,7 @@ public class AgentRuntime {
                 res =  modelResp.getMessage().getContent();
 
                 StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+                stepTrace.setTokenUsage(modelResp.getTokenUsage());
                 runTrace.addStepTrace(stepTrace);
                 break;
             }
@@ -87,16 +124,23 @@ public class AgentRuntime {
                 agentState.applyEvent(callToolStartedEvent);
                 String args = toolMessage.getToolArgs();
                 Tool tool = toolRegistry.getToolByCode(toolMessage.getToolCode());
-                String toolRes = tool.execute(new ToolContext(toolMessage.getToolArgs()));
+                String toolRes = tool.execute(new ToolContext(sessionId, runId,
+                        ConfigUtil.get("project.workspace", System.getProperty("user.dir")), args));
 
-
+                // 工具完整输出存入文件，上下文中只保留引用
+                String resultId = toolResultStore.store(toolMessage.getToolCode(), toolRes);
+                int lineCount = toolRes == null ? 0 : toolRes.split("\n", -1).length;
                 String toolCallId = toolMessage.getToolCallId();
-                MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), toolRes);
+                String reference = "结果已存储[result_id=" + resultId + ", lines=" + lineCount
+                        + "]，使用 read_tool_result 工具查阅详情";
+
+                MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), reference);
                 CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, runId, turnId, round, toolMsg,
                         toolMessage.getToolCode(), toolRes);
                 agentState.applyEvent(callToolFinishedEvent);
             }
             StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+            stepTrace.setTokenUsage(modelResp.getTokenUsage());
             runTrace.addStepTrace(stepTrace);
         }
 
@@ -108,6 +152,7 @@ public class AgentRuntime {
         agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, round, res));
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
+        log.info("Run finished: {}", tokenTracker.summary());
         return res;
 
     }

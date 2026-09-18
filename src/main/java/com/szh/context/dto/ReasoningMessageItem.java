@@ -15,8 +15,16 @@ public class ReasoningMessageItem implements MessageItem {
 
     private String content;
 
+    /** 原始 content JSON 字符串，回传时原样透传给 API */
+    private String rawContentJson;
+
     public ReasoningMessageItem(String content) {
         this.content = content;
+    }
+
+    public ReasoningMessageItem(String content, String rawContentJson) {
+        this.content = content;
+        this.rawContentJson = rawContentJson;
     }
 
     @Override

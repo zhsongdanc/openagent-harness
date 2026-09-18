@@ -104,6 +104,13 @@
                     <encoding>UTF-8</encoding>
                     <!-- 开启预览特性，如果要使用JDK21预览功能（虚拟线程相关预览API）打开下面一行 -->
                     <!-- <enablePreview>true</enablePreview> -->
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.46</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
         </plugins>

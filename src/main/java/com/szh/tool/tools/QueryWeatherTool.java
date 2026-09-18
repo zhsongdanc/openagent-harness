@@ -45,7 +45,6 @@ public class QueryWeatherTool implements LocalTool {
         }
 
         if (location != null && 50.0f == location.getLatitude()) {
-            System.out.println("天气查询成功");
             return "晴朗";
         }
         return "参数不合理";

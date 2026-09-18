@@ -44,11 +44,6 @@ public abstract class ShellCommandTool implements ShellTool {
      */
     private static final long DRAIN_SECONDS = 5;
 
-    /**
-     * 回传给模型的最大输出字符数，防止单条命令挤爆上下文窗口
-     */
-    private static final int MAX_OUTPUT_CHARS = 20000;
-
     @Override
     public String execute(ToolContext toolContext) {
 
@@ -94,18 +89,16 @@ public abstract class ShellCommandTool implements ShellTool {
             }
 
             String raw = output.get(DRAIN_SECONDS, TimeUnit.SECONDS);
-            String result = truncate(raw);
             int exitCode = process.exitValue();
             log.info("shell done: cmd={}, exitCode={}, outputLength={}", cmdline, exitCode, raw.length());
 
-            if (result.isBlank()) {
-                // 退出码非 0 不一定是失败（grep 无匹配返回 1），只陈述事实不做定性
+            // 完整输出存入文件，不再截断；模型通过 read_tool_result 分页查阅
+            if (raw.isBlank()) {
                 return exitCode == 0
                         ? getCode() + " 执行完成，无输出"
                         : getCode() + " 执行完成，无输出，exitCode=" + exitCode;
             }
-            // 退出码非 0 时不丢弃输出，只在尾部补上退出码交由模型判断
-            return exitCode == 0 ? result : result + "\nexitCode=" + exitCode;
+            return exitCode == 0 ? raw : raw + "\nexitCode=" + exitCode;
 
         } catch (Exception e) {
             log.error("execute command failed, cmd={}", cmdline, e);
@@ -137,17 +130,6 @@ public abstract class ShellCommandTool implements ShellTool {
         }
 
         return sb.toString();
-    }
-
-    /**
-     * 输出超长时截断，并提示模型改用 head/tail/grep 缩小读取范围
-     */
-    private String truncate(String output) {
-        if (output.length() <= MAX_OUTPUT_CHARS) {
-            return output;
-        }
-        return output.substring(0, MAX_OUTPUT_CHARS)
-                + "\n...[输出已截断，共 " + output.length() + " 字符，请用 head/tail/grep 分批读取]";
     }
 
     /**

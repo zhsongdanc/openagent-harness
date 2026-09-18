@@ -2,6 +2,7 @@ package com.szh.tool;
 
 import com.szh.tool.tools.QueryLocationTool;
 import com.szh.tool.tools.QueryWeatherTool;
+import com.szh.tool.tools.ReadToolResultTool;
 import com.szh.tool.tools.shell.CatTool;
 import com.szh.tool.tools.shell.FindTool;
 import com.szh.tool.tools.shell.GitTool;
@@ -27,6 +28,7 @@ public class ToolRegistry {
     public ToolRegistry() {
         QueryLocationTool locationTool = new QueryLocationTool();
         QueryWeatherTool weatherTool = new QueryWeatherTool();
+        ReadToolResultTool readToolResultTool = new ReadToolResultTool();
 
         // shell 工具的定义内置在各自工具类中，这里只负责注册，按需增删
         List<Tool> shellTools = List.of(
@@ -43,6 +45,7 @@ public class ToolRegistry {
         List<Tool> allTools = new ArrayList<>();
         allTools.add(locationTool);
         allTools.add(weatherTool);
+        allTools.add(readToolResultTool);
         allTools.addAll(shellTools);
 
         tools = List.copyOf(allTools);

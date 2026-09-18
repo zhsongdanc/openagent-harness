@@ -3,5 +3,6 @@
 target
 */*.iml
 .DS_Store
+.agent-data/
 ### ignore ut dynamic rewrite pom ###
 ut-rewrite-pom.xml

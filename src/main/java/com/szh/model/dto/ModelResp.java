@@ -18,4 +18,14 @@ public class ModelResp {
     private AssistantMessageItem message;
 
     private ActionEnum action;
+
+    /**
+     * 服务端返回的 token 用量，null 表示未返回
+     */
+    private TokenUsage tokenUsage;
+
+    public ModelResp(AssistantMessageItem message, ActionEnum action) {
+        this.message = message;
+        this.action = action;
+    }
 }

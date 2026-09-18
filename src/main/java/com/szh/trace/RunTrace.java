@@ -36,6 +36,12 @@ public class RunTrace {
 
     private List<StepTrace> stepTraceList;
 
+    private TokenTracker tokenTracker;
+
+    public void setTokenTracker(TokenTracker tokenTracker) {
+        this.tokenTracker = tokenTracker;
+    }
+
     public void printTraceByRunId(String runId) {
         if (!this.runId.equals(runId)) {
             return;
@@ -51,11 +57,20 @@ public class RunTrace {
             for (StepTrace step : stepTraceList) {
                 sb.append("    Step ").append(step.getStepNum())
                         .append(" [startTime=").append(step.getStartTime())
-                        .append(", endTime=").append(step.getEndTime())
-                        .append("]\n");
+                        .append(", endTime=").append(step.getEndTime());
+                if (step.getTokenUsage() != null) {
+                    sb.append(", tokens=").append(step.getTokenUsage().getTotalTokens())
+                            .append("(prompt=").append(step.getTokenUsage().getPromptTokens())
+                            .append(", completion=").append(step.getTokenUsage().getCompletionTokens())
+                            .append(")");
+                }
+                sb.append("]\n");
             }
         } else {
             sb.append("  No steps recorded.\n");
+        }
+        if (tokenTracker != null) {
+            sb.append("  ").append(tokenTracker.summary()).append("\n");
         }
 
         log.info("printTraceByRunId {}", sb.toString());

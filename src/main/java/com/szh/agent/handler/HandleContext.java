@@ -29,4 +29,6 @@ public class HandleContext {
      * 当前轮次序号，每轮循环开始前由运行时刷新，处理器据此给事件打轮次标记
      */
     private int round;
+
+    private String workspace;
 }

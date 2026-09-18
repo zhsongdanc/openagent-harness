@@ -21,7 +21,8 @@ public class ReasoningHandler implements OutputItemHandler {
     @Override
     public HandleResult handle(OutputItem item, HandleContext context) {
         ReasoningOutputItem reasoning = (ReasoningOutputItem) item;
-        ReasoningMessageItem messageItem = new ReasoningMessageItem(reasoning.getContent());
+        ReasoningMessageItem messageItem = new ReasoningMessageItem(
+                reasoning.getContent(), reasoning.getRawContentJson());
         context.getAgentState().applyEvent(new ReasoningEvent(
                 context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(), messageItem));
         return HandleResult.none();

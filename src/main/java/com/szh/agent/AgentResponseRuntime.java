@@ -4,6 +4,13 @@ package com.szh.agent;
 import com.szh.agent.handler.HandleContext;
 import com.szh.agent.handler.HandleResult;
 import com.szh.agent.handler.OutputItemHandlerRegistry;
+import com.szh.context.compaction.ContextCompactionManager;
+import com.szh.context.compaction.ResponseModelSummarizer;
+import com.szh.context.compaction.StepCompactor;
+import com.szh.context.dto.AssistantMessageItem;
+import com.szh.context.dto.MessageItem;
+import com.szh.context.dto.ReasoningMessageItem;
+import com.szh.context.dto.ToolMessageItem;
 import com.szh.context.dto.UserMessageItem;
 import com.szh.event.Event;
 import com.szh.event.RunCompletedEvent;
@@ -15,7 +22,9 @@ import com.szh.model.dto.output.ResponseModelResp;
 import com.szh.tool.ToolRegistry;
 import com.szh.trace.RunTrace;
 import com.szh.trace.StepTrace;
+import com.szh.trace.TokenTracker;
 import com.szh.utils.CommonUtils;
+import com.szh.utils.ConfigUtil;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,11 +56,18 @@ public class AgentResponseRuntime {
 
     private final OutputItemHandlerRegistry handlerRegistry;
 
+    private final TokenTracker tokenTracker;
+
+    private final ContextCompactionManager compactionManager;
+
     public AgentResponseRuntime(AgentState agentState, ToolRegistry toolRegistry, ResponseModel model) {
         this.agentState = agentState;
         this.toolRegistry = toolRegistry;
         this.model = model;
         this.handlerRegistry = OutputItemHandlerRegistry.defaultRegistry();
+        this.tokenTracker = new TokenTracker();
+        // 通过 ResponseModelSummarizer 适配 Responses API，使 L1 LLM 摘要压缩可用
+        this.compactionManager = new ContextCompactionManager(new ResponseModelSummarizer(model), tokenTracker);
     }
 
     public String run(String sessionId, String userInput) {
@@ -64,7 +80,8 @@ public class AgentResponseRuntime {
         agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId, 0));
         agentState.applyEvent(new UserMessageEvent(sessionId, runId, turnId, 0, new UserMessageItem(userInput), userInput));
 
-        HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, runId, turnId, 0);
+        HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, runId, turnId, 0,
+                ConfigUtil.get("project.workspace", System.getProperty("user.dir")));
 
         String res = "";
         int round = 0;
@@ -75,6 +92,21 @@ public class AgentResponseRuntime {
             round++;
             handleContext.setRound(round);
             long roundStart = System.currentTimeMillis();
+
+            // 上下文压缩检查：在调用 model 前判断是否需要压缩
+            List<MessageItem> ctx = agentState.getModelContext();
+            int ctxTokens = StepCompactor.estimateTotalTokens(ctx);
+            // 统计上下文中各类型 item 数量，便于排查 reasoning 是否正确回传
+            long reasoningCount = ctx.stream().filter(m -> m instanceof ReasoningMessageItem).count();
+            long toolCallCount = ctx.stream().filter(m -> m instanceof AssistantMessageItem a && a.isCallTool()).count();
+            long toolResultCount = ctx.stream().filter(m -> m instanceof ToolMessageItem).count();
+            log.info("[Round {}] 上下文状态: 消息数={}, 估算tokens={}, 类型分布=[reasoning={}, toolCall={}, toolResult={}]",
+                    round, ctx.size(), ctxTokens, reasoningCount, toolCallCount, toolResultCount);
+            List<MessageItem> compacted = compactionManager.maybeCompact(new ArrayList<>(agentState.getModelContext()));
+            if (compacted.size() != agentState.getModelContext().size()) {
+                log.info("[Round {}] >>> 压缩已执行: 消息数 {} -> {} <<<", round, agentState.getModelContext().size(), compacted.size());
+                agentState.replaceModelContext(compacted);
+            }
 
             ResponseModelResp modelResp = model.call(
                     new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());

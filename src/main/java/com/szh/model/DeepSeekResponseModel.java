@@ -71,7 +71,8 @@ public class DeepSeekResponseModel implements ResponseModel {
                 log.error("DeepSeek Responses API error: {},req:{}", response.body(), request.toString());
                 throw new RuntimeException("DeepSeek Responses API error: " + response.body());
             }
-            return parseResponse(response.body());
+            String body = response.body();
+            return parseResponse(body);
 
         } catch (Exception e) {
             log.error("DeepSeekResponseModel call failed", e);
@@ -88,10 +89,14 @@ public class DeepSeekResponseModel implements ResponseModel {
      * - 工具结果: {type: "function_call_output", call_id, output}
      * - 思维链: {type: "reasoning", content}
      *
-     * 注意：DeepSeek 要求同一轮内所有 function_call 必须连续排在一起、function_call_output
-     * 统一跟在其后，不能交错。否则下一次请求会报
-     * "The reasoning_text in the thinking mode must be passed back to the API"。
+     * 注意：DeepSeek 要求同一轮内所有 function_call 必须连续排在一起、
+     * function_call_output 统一跟在其后，不能交错。否则下一次请求会报
+     * "The reasoning_text in the thinking mode must be passed back to the API"
+     * （这条报错信息具有误导性，实际是顺序问题）。
      * 这里先把 function_call_output 缓存起来，遇到非 function_call/output 的 item 时 flush。
+     * function_call 与 function_call_output 通过 call_id 关联，位置重排不影响配对。
+     *
+     * 空 reasoning 跳过不回传（API 会拒绝）。
      */
     private ArrayNode convertInput(List<MessageItem> items) {
         ArrayNode array = mapper.createArrayNode();
@@ -99,19 +104,28 @@ public class DeepSeekResponseModel implements ResponseModel {
 
         for (MessageItem item : items) {
             if (item instanceof ToolMessageItem toolItem) {
+                // 工具结果先缓存，等待本轮所有并行 function_call 排完再 flush
                 pendingOutputs.add(buildFunctionOutput(toolItem));
             } else if (item instanceof AssistantMessageItem assistantItem && assistantItem.isCallTool()) {
                 array.add(buildFunctionCall(assistantItem));
             } else {
+                // 遇到非 function_call/output（reasoning / user / system / assistant 文本），
+                // 先把之前缓冲的 function_call_output flush 出去，保证顺序合规
                 flushPendingOutputs(array, pendingOutputs);
                 if (item instanceof ReasoningMessageItem reasoningItem) {
-                    array.add(buildReasoning(reasoningItem));
+                    if (reasoningItem.getContent() != null && !reasoningItem.getContent().isEmpty()) {
+                        array.add(buildReasoning(reasoningItem));
+                    } else {
+                        log.warn("跳过空 reasoning item，不回传");
+                    }
                 } else {
                     array.add(buildMessage(item));
                 }
             }
         }
         flushPendingOutputs(array, pendingOutputs);
+
+        log.debug("convertInput: {} items -> {} input entries", items.size(), array.size());
         return array;
     }
 
@@ -142,13 +156,27 @@ public class DeepSeekResponseModel implements ResponseModel {
     private ObjectNode buildReasoning(ReasoningMessageItem reasoningItem) {
         ObjectNode reasoning = mapper.createObjectNode();
         reasoning.put("type", "reasoning");
-        ArrayNode contentArray = mapper.createArrayNode();
-        ObjectNode contentBlock = mapper.createObjectNode();
-        contentBlock.put("type", "reasoning_text");
-        contentBlock.put("text", reasoningItem.getContent());
-        contentArray.add(contentBlock);
-        reasoning.set("content", contentArray);
+        if (reasoningItem.getRawContentJson() != null && !reasoningItem.getRawContentJson().isEmpty()) {
+            // 原样透传 API 返回的 content（含 encrypted_content 等）
+            try {
+                reasoning.set("content", mapper.readTree(reasoningItem.getRawContentJson()));
+            } catch (Exception e) {
+                log.warn("rawContentJson 解析失败，回退为明文构造", e);
+                reasoning.set("content", buildPlainTextContent(reasoningItem.getContent()));
+            }
+        } else {
+            reasoning.set("content", buildPlainTextContent(reasoningItem.getContent()));
+        }
         return reasoning;
+    }
+
+    private ArrayNode buildPlainTextContent(String text) {
+        ArrayNode contentArray = mapper.createArrayNode();
+        ObjectNode block = mapper.createObjectNode();
+        block.put("type", "reasoning_text");
+        block.put("text", text != null ? text : "");
+        contentArray.add(block);
+        return contentArray;
     }
 
     private ObjectNode buildMessage(MessageItem item) {
@@ -205,6 +233,14 @@ public class DeepSeekResponseModel implements ResponseModel {
         if (items.isEmpty()) {
             throw new RuntimeException("DeepSeek Responses API returned empty output");
         }
+
+        // 日志：输出本轮返回的 item 类型，便于排查 reasoning 是否正确解析
+        StringBuilder typesSummary = new StringBuilder();
+        for (OutputItem item : items) {
+            typesSummary.append(item.type()).append(",");
+        }
+        log.info("Model returned {} output items: [{}]", items.size(), typesSummary);
+
         return new ResponseModelResp(items);
     }
 
@@ -222,7 +258,9 @@ public class DeepSeekResponseModel implements ResponseModel {
             case MessageOutputItem.TYPE:
                 return new MessageOutputItem(extractText(node));
             case ReasoningOutputItem.TYPE:
-                return new ReasoningOutputItem(extractText(node));
+                JsonNode contentNode = node.get("content");
+                String rawJson = (contentNode != null) ? contentNode.toString() : null;
+                return new ReasoningOutputItem(extractText(node), rawJson);
             default:
                 return new UnknownOutputItem(type);
         }

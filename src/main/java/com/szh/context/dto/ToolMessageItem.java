@@ -30,6 +30,7 @@ public class ToolMessageItem implements MessageItem {
 
     @Override
     public String transfer2prompt() {
-        return "已经执行工具code:" + toolCode + "，结果为：" + execResult;
+        // execResult 现在存储的是引用信息（resultId + 摘要），而非完整输出
+        return "已经执行工具code:" + toolCode + "，" + execResult;
     }
 }

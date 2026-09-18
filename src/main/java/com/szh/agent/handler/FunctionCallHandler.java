@@ -11,6 +11,7 @@ import com.szh.model.dto.output.FunctionCallOutputItem;
 import com.szh.model.dto.output.OutputItem;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolContext;
+import com.szh.tool.store.ToolResultStore;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -45,11 +46,19 @@ public class FunctionCallHandler implements OutputItemHandler {
             log.warn("tool not found: {}", functionCall.getName());
             toolRes = "tool not found: " + functionCall.getName();
         } else {
-            toolRes = tool.execute(new ToolContext(functionCall.getArguments()));
+            toolRes = tool.execute(new ToolContext(
+                    context.getSessionId(), context.getRunId(), context.getWorkspace(), functionCall.getArguments()));
         }
 
+        // 工具完整输出存入文件，上下文中只保留引用
+        ToolResultStore store = new ToolResultStore(context.getWorkspace(), context.getSessionId());
+        String resultId = store.store(functionCall.getName(), toolRes);
+        int lineCount = toolRes == null ? 0 : toolRes.split("\n", -1).length;
+        String reference = "结果已存储[result_id=" + resultId + ", lines=" + lineCount
+                + "]，使用 read_tool_result 工具查阅详情";
+
         MessageItem toolMsg = new ToolMessageItem(
-                functionCall.getCallId(), functionCall.getName(), toolRes);
+                functionCall.getCallId(), functionCall.getName(), reference);
         context.getAgentState().applyEvent(new CallToolFinishedEvent(
                 context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(), toolMsg,
                 functionCall.getName(), toolRes));
