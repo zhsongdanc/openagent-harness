@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -88,6 +89,11 @@ public abstract class ShellCommandTool implements ShellTool {
             if (workspace != null) {
                 builder.directory(workspace);
             }
+            // 子类可注入额外环境变量：如 git commit 用 GIT_EDITOR=true 关掉编辑器，避免非交互场景阻塞超时
+            Map<String, String> extraEnv = environment();
+            if (extraEnv != null && !extraEnv.isEmpty()) {
+                builder.environment().putAll(extraEnv);
+            }
 
             Process started = builder.start();
             process = started;
@@ -125,6 +131,15 @@ public abstract class ShellCommandTool implements ShellTool {
      * 构建命令数组，第一个元素为可执行文件名；参数缺失时抛异常，由 execute 统一转成工具结果
      */
     protected abstract List<String> buildCommand(String args);
+
+    /**
+     * 子进程额外环境变量钩子：默认空，不影响既有 shell 工具。
+     * 需要关掉交互式提示/编辑器的工具（如 git commit / git push）覆盖此方法注入 GIT_EDITOR、
+     * GIT_TERMINAL_PROMPT 等，避免子进程等待 stdin 而触发本类的执行超时。
+     */
+    protected Map<String, String> environment() {
+        return Map.of();
+    }
 
     protected String readOutput(Process process) throws Exception {
 

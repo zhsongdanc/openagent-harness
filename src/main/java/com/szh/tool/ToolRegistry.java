@@ -8,6 +8,10 @@ import com.szh.tool.tools.file.EditFileTool;
 import com.szh.tool.tools.file.ReadFileTool;
 import com.szh.tool.tools.file.RepoMapTool;
 import com.szh.tool.tools.file.WriteFileTool;
+import com.szh.tool.tools.git.GitAddTool;
+import com.szh.tool.tools.git.GitCommitTool;
+import com.szh.tool.tools.git.GitPushTool;
+import com.szh.tool.tools.git.GitStatusTool;
 import com.szh.tool.tools.memory.ForgetTool;
 import com.szh.tool.tools.memory.RecallTool;
 import com.szh.tool.tools.memory.RememberTool;
@@ -57,6 +61,7 @@ public class ToolRegistry {
         allTools.add(readToolResultTool);
         allTools.addAll(shellTools);
         allTools.addAll(fileTools());
+        allTools.addAll(gitTools());
         allTools.addAll(memoryTools());
 
         tools = List.copyOf(allTools);
@@ -72,6 +77,18 @@ public class ToolRegistry {
             return List.of();
         }
         return List.of(new ReadFileTool(), new WriteFileTool(), new EditFileTool(), new RepoMapTool());
+    }
+
+    /**
+     * git 工作流工具（git_status/git_add/git_commit/git_push）：把高频提交操作封装成参数结构化的独立工具，
+     * 修复裸 git commit 弹编辑器阻塞、缺身份/凭据导致的“无法提交代码”。原始 git 透传工具仍保留在 shellTools 中，
+     * 供 diff/log/show 等只读查询使用；git.tools.enabled=false 可整体关闭这组封装。
+     */
+    private List<Tool> gitTools() {
+        if (!ConfigUtil.getBoolean("git.tools.enabled", true)) {
+            return List.of();
+        }
+        return List.of(new GitStatusTool(), new GitAddTool(), new GitCommitTool(), new GitPushTool());
     }
 
     /**

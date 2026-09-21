@@ -71,6 +71,21 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
   `ConsolePermissionPrompter.confirm` 均已 synchronized。
 - **冒烟验证**：`com.szh.test.P1SmokeTest`（main 直跑，不依赖模型 API）覆盖文件工具链/路径安全/repo_map/并行事件有序/工厂装配。
 
+## P2 交互与可观测性
+
+- **交互式 REPL**（`com.szh.cli.Repl`，纯 JDK 无新增依赖）：把「一次性 run」升级为可持续对话的 CLI 会话。
+  跨轮复用同一 `AgentState` + 运行时实例（上下文由 `applyEvent` 增量维护，MEMORY 引擎下也能多轮连续）；
+  `/runtime chat|response` 双链路切换共享同一 session；`/new`、`/session [id]`、`/replay`、`/model`、`/clear` 等内置命令；
+  默认链路走 `repl.runtime`。开启 `model.stream.enabled` 时正文已由 `ConsoleStreamListener` 逐 token 打到 stdout，REPL 不再重复打印最终结果。
+  支持 `--prompt "..."` 非交互一次性执行；权限确认仍由 `ConsolePermissionPrompter` 直接读 stdin（REPL 一次只读一行、run 期间不并发读取，交互场景不串台）。
+- **Git 工作流**（`com.szh.tool.tools.git`，开关 `git.tools.enabled`）：把 add/commit/push/status 封装成参数结构化独立工具
+  （`git_add`/`git_commit`/`git_push`/`git_status`），修复「无法提交代码」——`git_commit` 强制 `-m` 且注入 `GIT_EDITOR=true` 杜绝裸 commit 弹编辑器阻塞，
+  基类统一 `GIT_TERMINAL_PROMPT=0` 避免 push 缺凭据挂死；仓库缺身份时可开 `git.commit.autoIdentity` 用 `-c user.name/email` 兜底（会覆盖既有身份，慎用）。
+  命令仍走 `ShellCommandTool` 权限闸门 + 沙箱；原始 `git` 透传工具保留供 diff/log/show 只读查询。子类经 `ShellCommandTool.environment()` 钩子注入环境变量。
+- **Trace 回放**（`com.szh.trace.replay.TraceReplay`）：把 `EventStore` 事件流重渲染成 run→turn→round 的可读时间线，解决「调试困难」。
+  `render()` 输出控制台文本时间线，`exportHtml()` 导出自包含 HTML（按事件类型着色、长内容折叠）到 `{trace.html.dir|workspace/.agent-data/traces}/{sessionId}.html`；
+  只读不改事件真相源，REPL `/replay [id] [--html]` 与 `TraceReplay <sessionId> [--html]` main 均可触发。注意 token 用量未随事件落库，回放呈现流程与耗时不含逐轮 token。
+
 ## 存储引擎
 
 由 `store.engine` 切换：`MEMORY`（进程内、非持久）、`MYSQL`（落库）、
