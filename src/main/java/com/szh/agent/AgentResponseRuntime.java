@@ -16,6 +16,7 @@ import com.szh.event.Event;
 import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
 import com.szh.event.UserMessageEvent;
+import com.szh.memory.LongTermMemory;
 import com.szh.model.ResponseModel;
 import com.szh.model.dto.output.OutputItem;
 import com.szh.model.dto.output.ResponseModelResp;
@@ -105,8 +106,10 @@ public class AgentResponseRuntime {
                 agentState.replaceModelContext(compacted);
             }
 
-            ResponseModelResp modelResp = model.call(
-                    new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
+            List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
+            // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt（只改副本，不动事件真相源）
+            LongTermMemory.get().injectRecall(callContext, userInput);
+            ResponseModelResp modelResp = model.call(callContext, toolRegistry.getTools());
             log.debug("call model, round:{}", round);
 
             boolean anyToolCall = false;
@@ -138,6 +141,8 @@ public class AgentResponseRuntime {
             res = "unknown error";
         }
         agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, round, res));
+        // L4 长期记忆：run 结束后反思抽取（复用 Responses API 摘要器）
+        LongTermMemory.get().reflectAndStore(sessionId, agentState.getModelContext(), new ResponseModelSummarizer(model));
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         return res;

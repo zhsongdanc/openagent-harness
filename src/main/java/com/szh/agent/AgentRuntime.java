@@ -6,6 +6,7 @@ import com.szh.context.compaction.ModelSummarizer;
 import com.szh.context.compaction.StepCompactor;
 import com.szh.context.dto.*;
 import com.szh.event.*;
+import com.szh.memory.LongTermMemory;
 import com.szh.model.Model;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
@@ -100,7 +101,10 @@ public class AgentRuntime {
             }
 
             String context = ContextBuilder.buildContext(agentState);
-            ModelResp modelResp = model.call(new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
+            List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
+            // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt（只改副本，不动事件真相源）
+            LongTermMemory.get().injectRecall(callContext, userInput);
+            ModelResp modelResp = model.call(callContext, toolRegistry.getTools());
 
             // 记录 token 用量
             tokenTracker.recordRound(modelResp.getTokenUsage());
@@ -153,6 +157,8 @@ public class AgentRuntime {
             res = "unknown error";
         }
         agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, round, res));
+        // L4 长期记忆：run 结束后反思抽取，把本轮对话蒸馏成可检索的长期记忆
+        LongTermMemory.get().reflectAndStore(sessionId, agentState.getModelContext(), new ModelSummarizer(model));
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         log.info("Run finished: {}", tokenTracker.summary());
