@@ -22,13 +22,25 @@ import java.util.List;
 @Slf4j
 public class ShellTest {
     public static void main(String[] args) {
+//        testChatStream();
 //        testShellTool();
         testCompactionTrigger();
     }
 
+    /**
+     * Chat Completions 链路端到端：验证 SSE 流式输出与并行 tool_calls 解析
+     */
+    public static void testChatStream() {
+        String userInput = "请用 repo_map 工具查看项目结构，再用一句话总结这是个什么项目";
+        com.szh.agent.AgentExecutor agentExecutor = new com.szh.agent.AgentExecutor();
+        String reply = agentExecutor.run(userInput);
+        System.out.println("=== 最终回答 ===");
+        System.out.println(reply);
+    }
+
 
     public static void testShellTool() {
-        String userInput = "你能帮我看一下当前项目有哪些类型文件吗";
+        String userInput = "请用 repo_map 工具看一下当前项目的结构，并用一句话总结这是个什么项目";
         AgentResponseExecutor agentExecutor = new AgentResponseExecutor();
         String reply = agentExecutor.runNewSession(userInput);
         System.out.println(reply);

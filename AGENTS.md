@@ -52,6 +52,25 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
   触发即结束 run 并回传原因。两条运行时都接入：`AgentRuntime` 内联、`AgentResponseRuntime` 经 `HandleContext`
   传给 `FunctionCallHandler`。工具执行必须 try-catch 兜底，异常转错误结果计入熔断，不再让整个 run 崩溃。
 
+## P1 核心体验（智能增强）
+
+- **多模型 + 流式**（`com.szh.model`）：`OpenAiCompatModel`（Chat Completions）/`OpenAiCompatResponseModel`（Responses）
+  是 OpenAI 兼容协议基类，DeepSeek 两模型只是其子类（固定 baseUrl/默认模型名）；`ModelFactory` 按 `model.provider`
+  （deepseek/openai/ollama/vllm/lmstudio）与 `model.response.provider` 装配两条链路，apiKey 未配置时回退环境变量。
+  SSE 流式走 `Model.call(messages, tools, StreamListener)` 重载，增量 token 由 `ConsoleStreamListener` 实时打到 stdout
+  （`model.stream.enabled`/`model.stream.printReasoning`）；**流式路径不重试**（增量已回放无法收回），阻塞路径仍走 RetryExecutor。
+- **文件工具**（`com.szh.tool.tools.file`，开关 `file.tools.enabled`）：`read_file`（带行号+offset/limit 分页）、
+  `write_file`（全量创建/覆盖）、`edit_file`（精确字符串替换，old_text 必须唯一否则拒绝，支持 replace_all，结果回显 LCS 统一 diff）、
+  `repo_map`（目录树+Java 符号抽取，自动剪枝 .git/target/node_modules 等噪音目录）。
+  路径安全由 `FileToolSupport` 统一把关：复用 `PathGuard.resolve`（含符号链接规范化），读写默认仅限工作区内，
+  `file.tools.allowOutside=true` 才放开到策略允许根；**读校验不能用 writableRoots 当边界**（含 /tmp 等，临时目录工作区会被穿越）。
+- **并行工具调用**（`com.szh.agent.ParallelToolExecutor`，两条运行时共用）：一轮内多个调用并发执行
+  （`agent.parallel.maxThreads`，单轮总超时 `agent.parallel.timeoutSeconds`），事件严格按「全部 CallToolStarted →
+  并发执行 → 全部 CallToolFinished（按调用原序）」落库，满足 Responses API 分组约束；`AssistantMessageItem.toolCalls`
+  承载一轮多调用（标量字段保留为首调用快照兼容旧路径）。配套线程安全：`AgentState.applyEvent`/`LoopGuard.record`/
+  `ConsolePermissionPrompter.confirm` 均已 synchronized。
+- **冒烟验证**：`com.szh.test.P1SmokeTest`（main 直跑，不依赖模型 API）覆盖文件工具链/路径安全/repo_map/并行事件有序/工厂装配。
+
 ## 存储引擎
 
 由 `store.engine` 切换：`MEMORY`（进程内、非持久）、`MYSQL`（落库）、

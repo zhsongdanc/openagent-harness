@@ -7,11 +7,12 @@ import com.szh.context.compaction.StepCompactor;
 import com.szh.context.dto.*;
 import com.szh.event.*;
 import com.szh.memory.LongTermMemory;
+import com.szh.model.ConsoleStreamListener;
 import com.szh.model.Model;
+import com.szh.model.StreamListener;
 import com.szh.model.dto.ActionEnum;
 import com.szh.model.dto.ModelResp;
-import com.szh.tool.Tool;
-import com.szh.tool.ToolContext;
+import com.szh.model.dto.ToolCall;
 import com.szh.tool.ToolRegistry;
 import com.szh.tool.store.ToolResultStore;
 import com.szh.trace.RunTrace;
@@ -106,7 +107,11 @@ public class AgentRuntime {
             List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
             // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt（只改副本，不动事件真相源）
             LongTermMemory.get().injectRecall(callContext, userInput);
-            ModelResp modelResp = model.call(callContext, toolRegistry.getTools());
+            // 流式输出：增量 token 实时打到控制台，长回答不再阻塞等待（model.stream.enabled 可关）
+            StreamListener streamListener = ConfigUtil.getBoolean("model.stream.enabled", true)
+                    ? new ConsoleStreamListener(ConfigUtil.getBoolean("model.stream.printReasoning", false))
+                    : null;
+            ModelResp modelResp = model.call(callContext, toolRegistry.getTools(), streamListener);
 
             // 记录 token 用量
             tokenTracker.recordRound(modelResp.getTokenUsage());
@@ -125,43 +130,13 @@ public class AgentRuntime {
 
             if (modelResp.getAction() == ActionEnum.TOOL_CALL) {
                 AssistantMessageItem toolMessage = modelResp.getMessage();
-                CallToolStartedEvent callToolStartedEvent = new CallToolStartedEvent(sessionId, runId, turnId, round,
-                        toolMessage.getToolCode(), toolMessage.getToolArgs());
-                agentState.applyEvent(callToolStartedEvent);
-                String args = toolMessage.getToolArgs();
-                Tool tool = toolRegistry.getToolByCode(toolMessage.getToolCode());
-
-                // 工具执行兜底：异常不再让整个 run 崩溃，而是转成错误结果并计入熔断统计
-                String toolRes;
-                boolean threw = false;
-                try {
-                    if (tool == null) {
-                        toolRes = "tool not found: " + toolMessage.getToolCode();
-                    } else {
-                        toolRes = tool.execute(new ToolContext(sessionId, runId,
-                                ConfigUtil.get("project.workspace", System.getProperty("user.dir")), args));
-                    }
-                } catch (Exception e) {
-                    threw = true;
-                    log.error("tool execute failed: {}", toolMessage.getToolCode(), e);
-                    toolRes = "execute failed: " + e.getMessage();
-                }
-                loopGuard.record(toolMessage.getToolCode(), args, toolRes, threw);
-
-                String toolCallId = toolMessage.getToolCallId();
-                // 元工具（inlineResult=true，如 read_tool_result）输出直接内联回传，避免二次落盘导致无限套娃；
-                // 普通工具走落盘策略：以 callId 作为 resultId，超阈值才落盘并回传引用存根，小输出直接内联。
-                String toolMsgContent;
-                if (tool != null && tool.inlineResult()) {
-                    toolMsgContent = toolRes;
-                } else {
-                    toolMsgContent = toolResultStore.presentResult(toolCallId, toolMessage.getToolCode(), toolRes);
-                }
-
-                MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), toolMsgContent);
-                CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, runId, turnId, round, toolMsg,
-                        toolMessage.getToolCode(), toolRes);
-                agentState.applyEvent(callToolFinishedEvent);
+                // 一轮可能包含多个并行工具调用：事件按「全部 started → 并发执行 → 全部 finished」
+                // 有序落库，执行本体交给 ParallelToolExecutor（含工具查找/异常兜底/熔断统计/落盘呈现）
+                List<ToolCall> calls = toolMessage.effectiveToolCalls();
+                ParallelToolExecutor.executeBatch(calls, new ParallelToolExecutor.ExecutionEnv(
+                        agentState, toolRegistry, sessionId, runId, turnId, round,
+                        ConfigUtil.get("project.workspace", System.getProperty("user.dir")),
+                        toolResultStore, loopGuard));
 
                 // 熔断触发：结束本次 run，把原因作为最终结果回传
                 if (loopGuard.isTripped()) {

@@ -1,242 +1,25 @@
 package com.szh.model;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.szh.context.dto.AssistantMessageItem;
-import com.szh.context.dto.MessageItem;
-import com.szh.context.dto.ToolMessageItem;
-import com.szh.model.dto.ActionEnum;
-import com.szh.model.dto.ModelResp;
-import com.szh.model.dto.TokenUsage;
-import com.szh.tool.Tool;
-import com.szh.tool.ToolDefinition;
-import com.szh.utils.ConfigUtil;
-import com.szh.utils.RetryExecutor;
-import com.szh.utils.RetryPolicy;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-import java.util.List;
-
+/**
+ * @author demussong
+ * @describe DeepSeek Chat Completions 模型：DeepSeek 的 API 是 OpenAI 兼容协议，
+ * 请求构造、SSE 流式解析、并行 tool_calls、重试退避等通用能力全部复用
+ * {@link OpenAiCompatModel}，这里只固定 DeepSeek 的接入点与默认模型名。
+ * @date 2026/8/25 12:09
+ */
 @Slf4j
-public class DeepSeekModel implements Model {
+public class DeepSeekModel extends OpenAiCompatModel {
 
-    private static final String API_URL = "https://api.deepseek.com/chat/completions";
+    private static final String BASE_URL = "https://api.deepseek.com";
+    private static final String DEFAULT_MODEL = "deepseek-chat";
 
-    private final String apiKey;
-
-    private final ObjectMapper mapper = new ObjectMapper();
-
-    private final HttpClient client = HttpClient.newHttpClient();
-
-    public DeepSeekModel(String apiKey){
-        this.apiKey = apiKey;
+    public DeepSeekModel(String apiKey) {
+        this(apiKey, DEFAULT_MODEL);
     }
 
-    @Override
-    public ModelResp call(List<MessageItem> messages, List<Tool> tools){
-        try {
-            // 瞬时故障（限流/网关错误/网络抖动）按策略指数退避重试，确定性错误（4xx）立即失败
-            return RetryExecutor.execute(
-                    () -> doCall(messages, tools),
-                    RetryPolicy.fromConfig(),
-                    DeepSeekModel::isRetryable,
-                    "DeepSeek chat call");
-        } catch (Exception e) {
-            log.error("DeepSeek call failed", e);
-            throw new RuntimeException("DeepSeek call failed", e);
-        }
+    public DeepSeekModel(String apiKey, String modelName) {
+        super(BASE_URL, modelName, apiKey, "DeepSeek");
     }
-
-    /**
-     * 单次实际请求：非 200 抛 {@link ModelApiException} 携带状态码与 Retry-After，供重试器判定
-     */
-    private ModelResp doCall(List<MessageItem> messages, List<Tool> tools) throws Exception {
-        ObjectNode request = mapper.createObjectNode();
-        request.put("model", "deepseek-chat");
-        /*
-         * MessageItem转换成DeepSeek messages
-         */
-        request.set("messages", convertMessages(messages));
-
-        /*
-         * 工具定义
-         */
-        if(tools != null && !tools.isEmpty()){
-            request.set("tools", convertTools(tools));
-            request.put("tool_choice", "auto");
-        }
-
-        HttpRequest httpRequest =
-                HttpRequest.newBuilder()
-                        .uri(URI.create(API_URL))
-                        .timeout(Duration.ofSeconds(ConfigUtil.getInt("model.request.timeoutSeconds", 120)))
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer "+apiKey)
-                        .POST(HttpRequest.BodyPublishers.ofString(request.toString()))
-                        .build();
-
-        HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200){
-            log.error("deepseek error: {}", response.body());
-            throw new ModelApiException(response.statusCode(),
-                    "deepseek error:" + response.body(), parseRetryAfterMs(response));
-        }
-        return parseResponse(response.body());
-    }
-
-    /**
-     * 判定异常是否可重试：网络类 IO 异常，或可重试状态码的 API 异常
-     */
-    static boolean isRetryable(Exception e) {
-        if (e instanceof ModelApiException mae) {
-            return mae.isRetryable();
-        }
-        return e instanceof IOException;
-    }
-
-    /**
-     * 解析服务端 Retry-After 响应头（秒）为毫秒，缺失或非法返回 0
-     */
-    static long parseRetryAfterMs(HttpResponse<?> response) {
-        return response.headers().firstValue("Retry-After")
-                .map(v -> {
-                    try {
-                        return (long) (Double.parseDouble(v.trim()) * 1000);
-                    } catch (NumberFormatException e) {
-                        return 0L;
-                    }
-                })
-                .orElse(0L);
-    }
-
-    /**
-     * MessageItem
-     *
-     * 转成DeepSeek messages
-     */
-    private ArrayNode convertMessages(List<MessageItem> items){
-        ArrayNode array = mapper.createArrayNode();
-
-        for(MessageItem item:items){
-            ObjectNode message = mapper.createObjectNode();
-            message.put("role", item.role());
-            message.put("content", item.transfer2prompt());
-
-            if (item instanceof AssistantMessageItem assistantItem && assistantItem.isCallTool()) {
-                message.putNull("content");
-                ArrayNode toolCallsArray = mapper.createArrayNode();
-                ObjectNode toolCall = mapper.createObjectNode();
-                toolCall.put("id", assistantItem.getToolCallId());
-                toolCall.put("type", "function");
-                ObjectNode function = mapper.createObjectNode();
-                function.put("name", assistantItem.getToolCode());
-                function.put("arguments", assistantItem.getToolArgs());
-                toolCall.set("function", function);
-                toolCallsArray.add(toolCall);
-                message.set("tool_calls", toolCallsArray);
-            }
-
-            if (item instanceof ToolMessageItem toolItem) {
-                message.put("tool_call_id", toolItem.getCallId());
-            }
-
-            array.add(message);
-
-        }
-        return array;
-    }
-
-    /**
-     * Tool Definition
-     *
-     * 转DeepSeek function schema
-     */
-    private ArrayNode convertTools(List<Tool> tools) throws Exception{
-
-        ArrayNode array = mapper.createArrayNode();
-
-        for(Tool tool:tools){
-            ToolDefinition toolDefinition = tool.getToolDefinition();
-            ObjectNode function = mapper.createObjectNode();
-
-            function.put("name", toolDefinition.getName());
-            function.put("description", toolDefinition.getDescription());
-            function.set("parameters", mapper.readTree(toolDefinition.getParameters()));
-
-            ObjectNode item = mapper.createObjectNode();
-            item.put("type", "function");
-            item.set("function", function);
-            array.add(item);
-        }
-        return array;
-    }
-
-
-    /**
-     * DeepSeek Response
-     *
-     * 转AssistantMessageItem
-     */
-    private ModelResp parseResponse(String json) throws Exception{
-        JsonNode root = mapper.readTree(json);
-        JsonNode message = root.path("choices").get(0).path("message");
-
-        // 解析 token 用量
-        TokenUsage tokenUsage = parseTokenUsage(root);
-
-        /*
-         * 工具调用
-         */
-        JsonNode toolCalls = message.get("tool_calls");
-
-        if(toolCalls!=null && toolCalls.size()>0){
-            JsonNode function = toolCalls.get(0).get("function");
-            String toolName = function.get("name").asText();
-            String arguments = function.get("arguments").asText();
-            String toolCallId = toolCalls.get(0).get("id").asText();
-            AssistantMessageItem assistantMessageItem = new AssistantMessageItem(
-                    toolCallId,
-                    toolName,
-                    arguments
-            );
-
-            ModelResp resp = new ModelResp(assistantMessageItem, ActionEnum.TOOL_CALL);
-            resp.setTokenUsage(tokenUsage);
-            return resp;
-        }
-
-        /*
-         * 普通回答
-         */
-        ModelResp resp = new ModelResp(new AssistantMessageItem(message.get("content").asText()),
-                ActionEnum.FINAL_ANSWER
-        );
-        resp.setTokenUsage(tokenUsage);
-        return resp;
-
-    }
-
-    /**
-     * 解析服务端返回的 usage 字段
-     */
-    private TokenUsage parseTokenUsage(JsonNode root) {
-        JsonNode usage = root.path("usage");
-        if (usage.isMissingNode()) {
-            return null;
-        }
-        int promptTokens = usage.path("prompt_tokens").asInt(0);
-        int completionTokens = usage.path("completion_tokens").asInt(0);
-        int totalTokens = usage.path("total_tokens").asInt(0);
-        int cachedTokens = usage.path("prompt_tokens_details").path("cached_tokens").asInt(0);
-        return new TokenUsage(promptTokens, completionTokens, totalTokens, cachedTokens);
-    }
-
 }

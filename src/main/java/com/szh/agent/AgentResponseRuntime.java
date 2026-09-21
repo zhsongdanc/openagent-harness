@@ -17,7 +17,10 @@ import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
 import com.szh.event.UserMessageEvent;
 import com.szh.memory.LongTermMemory;
+import com.szh.model.ConsoleStreamListener;
 import com.szh.model.ResponseModel;
+import com.szh.model.StreamListener;
+import com.szh.model.dto.ToolCall;
 import com.szh.model.dto.output.OutputItem;
 import com.szh.model.dto.output.ResponseModelResp;
 import com.szh.tool.ToolRegistry;
@@ -111,19 +114,35 @@ public class AgentResponseRuntime {
             List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
             // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt（只改副本，不动事件真相源）
             LongTermMemory.get().injectRecall(callContext, userInput);
-            ResponseModelResp modelResp = model.call(callContext, toolRegistry.getTools());
+            // 流式输出：增量 token 实时打到控制台（model.stream.enabled 可关）
+            StreamListener streamListener = ConfigUtil.getBoolean("model.stream.enabled", true)
+                    ? new ConsoleStreamListener(ConfigUtil.getBoolean("model.stream.printReasoning", false))
+                    : null;
+            ResponseModelResp modelResp = model.call(callContext, toolRegistry.getTools(), streamListener);
             log.debug("call model, round:{}", round);
 
             boolean anyToolCall = false;
             String lastMessage = null;
+            List<ToolCall> roundCalls = new ArrayList<>();
             for (OutputItem item : modelResp.getItems()) {
                 HandleResult result = handlerRegistry.dispatch(item, handleContext);
                 if (result.isToolCallExecuted()) {
                     anyToolCall = true;
                 }
+                if (result.getCollectedCalls() != null) {
+                    roundCalls.addAll(result.getCollectedCalls());
+                }
                 if (result.getMessageContent() != null) {
                     lastMessage = result.getMessageContent();
                 }
+            }
+
+            // 一轮内多个 function_call 并发执行（取代旧串行）：事件按「全部 started → 并发执行 →
+            // 全部 finished」有序落库，满足 Responses API 分组约束，执行细节由 ParallelToolExecutor 兜底
+            if (!roundCalls.isEmpty()) {
+                ParallelToolExecutor.executeBatch(roundCalls, new ParallelToolExecutor.ExecutionEnv(
+                        agentState, toolRegistry, sessionId, runId, turnId, round,
+                        workspace, toolResultStore, loopGuard));
             }
 
             StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());

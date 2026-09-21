@@ -104,9 +104,10 @@ public class PathGuard {
     }
 
     /**
-     * 相对路径以工作区为基准解析，绝对路径原样解析，再规范化并解析符号链接
+     * 相对路径以工作区为基准解析，绝对路径原样解析，再规范化并解析符号链接。
+     * public 供文件工具（com.szh.tool.tools.file）复用，与 shell 层保持同一路径安全口径
      */
-    static Path resolve(String arg, Path base) {
+    public static Path resolve(String arg, Path base) {
         Path p = Paths.get(SandboxPolicy.expand(arg));
         Path absolute = (p.isAbsolute() ? p : base.resolve(p)).toAbsolutePath().normalize();
         return canonical(absolute);
@@ -134,9 +135,9 @@ public class PathGuard {
     }
 
     /**
-     * 归一化路径是否落在任一允许根之下（含根本身）
+     * 归一化路径是否落在任一允许根之下（含根本身）。public 供文件工具复用
      */
-    static boolean isWithinAllowed(Path resolved, SandboxPolicy policy) {
+    public static boolean isWithinAllowed(Path resolved, SandboxPolicy policy) {
         for (Path root : policy.getWritableRoots()) {
             if (resolved.startsWith(root)) {
                 return true;

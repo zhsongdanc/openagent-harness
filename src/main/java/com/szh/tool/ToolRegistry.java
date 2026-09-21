@@ -4,6 +4,10 @@ import com.szh.memory.LongTermMemory;
 import com.szh.tool.tools.QueryLocationTool;
 import com.szh.tool.tools.QueryWeatherTool;
 import com.szh.tool.tools.ReadToolResultTool;
+import com.szh.tool.tools.file.EditFileTool;
+import com.szh.tool.tools.file.ReadFileTool;
+import com.szh.tool.tools.file.RepoMapTool;
+import com.szh.tool.tools.file.WriteFileTool;
 import com.szh.tool.tools.memory.ForgetTool;
 import com.szh.tool.tools.memory.RecallTool;
 import com.szh.tool.tools.memory.RememberTool;
@@ -52,9 +56,22 @@ public class ToolRegistry {
         allTools.add(weatherTool);
         allTools.add(readToolResultTool);
         allTools.addAll(shellTools);
+        allTools.addAll(fileTools());
         allTools.addAll(memoryTools());
 
         tools = List.copyOf(allTools);
+    }
+
+    /**
+     * 文件工具（read/write/edit/repo_map）：模型直接读写工作区文件与感知项目结构，
+     * 是完成实际编码任务的基础能力；路径安全由 FileToolSupport 统一把关，
+     * file.tools.enabled=false 可整体关闭退回纯 shell 工具链
+     */
+    private List<Tool> fileTools() {
+        if (!ConfigUtil.getBoolean("file.tools.enabled", true)) {
+            return List.of();
+        }
+        return List.of(new ReadFileTool(), new WriteFileTool(), new EditFileTool(), new RepoMapTool());
     }
 
     /**

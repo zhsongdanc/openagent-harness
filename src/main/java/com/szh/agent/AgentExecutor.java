@@ -1,7 +1,7 @@
 package com.szh.agent;
 
 import com.szh.event.Event;
-import com.szh.model.DeepSeekModel;
+import com.szh.model.ModelFactory;
 import com.szh.store.EventStore;
 import com.szh.store.EventStoreFactory;
 import com.szh.tool.ToolRegistry;
@@ -36,7 +36,8 @@ public class AgentExecutor {
             throw new IllegalArgumentException("Session not found");
         }
 
-        agentRuntime = new AgentRuntime(agentState, new ToolRegistry(), new DeepSeekModel(System.getenv("DEEPSEEK_API_KEY")));
+        // 模型由 ModelFactory 按 model.provider 配置装配，不再硬编码 DeepSeek
+        agentRuntime = new AgentRuntime(agentState, new ToolRegistry(), ModelFactory.createChatModel());
         String res = agentRuntime.run(sessionId, userInput);
         agentRuntime.printLog(sessionId);
         return res;

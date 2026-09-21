@@ -26,8 +26,12 @@ public class ConsolePermissionPrompter implements PermissionPrompter {
         this.defaultWhenNonInteractive = defaultWhenNonInteractive;
     }
 
+    /**
+     * 确认入口加锁：并行工具执行时多个 worker 可能同时触发确认，
+     * 不加锁会出现提示交错、stdin 应答串台（A 命令的 y 被 B 命令消费）
+     */
     @Override
-    public boolean confirm(String prompt) {
+    public synchronized boolean confirm(String prompt) {
         // 提示写到 stderr，避免污染程序正常 stdout 输出
         System.err.println();
         System.err.println("========== 需要确认 ==========");

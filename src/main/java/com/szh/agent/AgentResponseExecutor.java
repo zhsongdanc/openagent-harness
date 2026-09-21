@@ -1,7 +1,7 @@
 
 package com.szh.agent;
 
-import com.szh.model.DeepSeekResponseModel;
+import com.szh.model.ModelFactory;
 import com.szh.store.EventStoreFactory;
 import com.szh.tool.ToolRegistry;
 import com.szh.utils.CommonUtils;
@@ -32,8 +32,9 @@ public class AgentResponseExecutor {
     }
 
     public String run(String sessionId, String userInput, AgentState agentState) {
+        // 模型由 ModelFactory 按 model.response.provider 配置装配，不再硬编码 DeepSeek
         AgentResponseRuntime agentRuntime = new AgentResponseRuntime(agentState, new ToolRegistry(),
-                new DeepSeekResponseModel(System.getenv("DEEPSEEK_API_KEY")));
+                ModelFactory.createResponseModel());
         String res = agentRuntime.run(sessionId, userInput);
         agentRuntime.printLog(sessionId);
         return res;

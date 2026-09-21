@@ -51,7 +51,11 @@ public class AgentState {
         this.modelContext = newContext;
     }
 
-    public void applyEvent(Event event) {
+    /**
+     * 事件落库 + 上下文增量维护。并行工具执行时多个 worker 线程可能同时回调，
+     * modelContext 是普通 ArrayList，必须同步保护「落库 + 追加」的原子性
+     */
+    public synchronized void applyEvent(Event event) {
         // 事件日志是唯一真相源，先落库
         boolean durable = true;
         try {

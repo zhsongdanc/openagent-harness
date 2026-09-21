@@ -60,14 +60,16 @@ public class LoopGuard {
     }
 
     /**
-     * 记录一次工具调用结果，必要时触发熔断
+     * 记录一次工具调用结果，必要时触发熔断。
+     * 内部计数器非原子，并行工具执行时由 ParallelToolExecutor 在主线程串行回放调用，
+     * 这里再加 synchronized 双保险，避免未来其它并发路径踩坑。
      *
      * @param toolCode  工具名
      * @param args      调用参数（用于重复检测）
      * @param result    工具返回文本
      * @param threw     工具执行是否抛异常
      */
-    public void record(String toolCode, String args, String result, boolean threw) {
+    public synchronized void record(String toolCode, String args, String result, boolean threw) {
         if (!enabled || tripped != null) {
             return;
         }
