@@ -52,6 +52,17 @@ public class AgentResponseRuntime {
 
     public static int MAX_ROUND = 200;
 
+    /**
+     * 实例级轮次上限，默认取静态 {@link #MAX_ROUND}。子 agent 通过 {@link #setMaxRound(int)} 收紧，
+     * 避免改动全局静态量影响主 agent（并行派生时尤甚）。
+     */
+    private int maxRound = MAX_ROUND;
+
+    public AgentResponseRuntime setMaxRound(int maxRound) {
+        this.maxRound = maxRound;
+        return this;
+    }
+
     private final ToolRegistry toolRegistry;
 
     private final AgentState agentState;
@@ -96,7 +107,7 @@ public class AgentResponseRuntime {
         String res = "";
         int round = 0;
         while (true) {
-            if (round > MAX_ROUND) {
+            if (round > maxRound) {
                 break;
             }
             round++;
@@ -162,7 +173,7 @@ public class AgentResponseRuntime {
             }
         }
 
-        if (round > MAX_ROUND) {
+        if (round > maxRound) {
             res = "reach max round";
         } else if (Objects.equals(res, "")) {
             res = "unknown error";

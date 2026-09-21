@@ -19,6 +19,7 @@ import com.szh.tool.tools.git.GitStatusTool;
 import com.szh.tool.tools.memory.ForgetTool;
 import com.szh.tool.tools.memory.RecallTool;
 import com.szh.tool.tools.memory.RememberTool;
+import com.szh.tool.tools.subagent.DispatchSubAgentTool;
 import com.szh.tool.tools.shell.CatTool;
 import com.szh.tool.tools.shell.FindTool;
 import com.szh.tool.tools.shell.GitTool;
@@ -32,6 +33,7 @@ import com.szh.utils.ConfigUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * @author demussong
@@ -42,7 +44,31 @@ public class ToolRegistry {
 
     private List<Tool> tools;
 
+    /**
+     * 工具白名单：null 表示放开全部工具；非 null 时 rebuild 后只保留 code 命中的工具。
+     * 子 agent（{@code SubAgentExecutor}）用按类型定制的白名单构造 registry，实现「独立工具子集」。
+     */
+    private final Set<String> allowedCodes;
+
+    /**
+     * 当前 registry 所处的子 agent 派生深度：主 agent 为 0，子 agent 逐层 +1。
+     * 达到 {@code subagent.maxDepth} 时不再注册 dispatch_subagent，从结构上杜绝无限递归派生。
+     */
+    private final int subAgentDepth;
+
     public ToolRegistry() {
+        this(null, 0);
+    }
+
+    /**
+     * 构造带白名单与深度的 registry（供子 agent 使用）。
+     *
+     * @param allowedCodes  工具 code 白名单，null 表示不限
+     * @param subAgentDepth 派生深度，主 agent 传 0
+     */
+    public ToolRegistry(Set<String> allowedCodes, int subAgentDepth) {
+        this.allowedCodes = allowedCodes;
+        this.subAgentDepth = subAgentDepth;
         rebuild();
     }
 
@@ -76,9 +102,14 @@ public class ToolRegistry {
         allTools.addAll(fileTools());
         allTools.addAll(gitTools());
         allTools.addAll(memoryTools());
+        allTools.addAll(subAgentTools());
         allTools.addAll(mcpTools());
 
-        tools = List.copyOf(allTools);
+        // 白名单过滤：子 agent 只保留其类型允许的工具 code；主 registry（allowedCodes=null）全量保留
+        List<Tool> effective = allowedCodes == null
+                ? allTools
+                : allTools.stream().filter(t -> allowedCodes.contains(t.getCode())).toList();
+        tools = List.copyOf(effective);
     }
 
     /**
@@ -114,6 +145,24 @@ public class ToolRegistry {
             return List.of();
         }
         return List.of(new RememberTool(), new RecallTool(), new ForgetTool());
+    }
+
+    /**
+     * 子 agent 派生工具（dispatch_subagent，对标 Claude Code 的 Task）：让主 agent 把会产生大量中间产物的
+     * 子任务外包给独立上下文的子 agent，只回收最终结论，是长任务不炸上下文的核心手段。
+     * <p>
+     * 深度闸门：{@code subagent.enabled=false} 整体关闭；当前 registry 深度达到 {@code subagent.maxDepth}
+     * 时不再注册——即子 agent 默认拿不到 dispatch_subagent，无法再派生孙 agent，从结构上杜绝无限递归。
+     */
+    private List<Tool> subAgentTools() {
+        if (!ConfigUtil.getBoolean("subagent.enabled", true)) {
+            return List.of();
+        }
+        int maxDepth = Math.max(1, ConfigUtil.getInt("subagent.maxDepth", 1));
+        if (subAgentDepth >= maxDepth) {
+            return List.of();
+        }
+        return List.of(new DispatchSubAgentTool(subAgentDepth));
     }
 
     /**

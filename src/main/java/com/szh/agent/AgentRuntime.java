@@ -68,6 +68,17 @@ public class AgentRuntime {
 
     public static int MAX_ROUND = 100;
 
+    /**
+     * 实例级轮次上限，默认取静态 {@link #MAX_ROUND}。子 agent 通过 {@link #setMaxRound(int)} 收紧，
+     * 避免改动全局静态量影响主 agent（并行派生时尤甚）。
+     */
+    private int maxRound = MAX_ROUND;
+
+    public AgentRuntime setMaxRound(int maxRound) {
+        this.maxRound = maxRound;
+        return this;
+    }
+
     public String run(String sessionId, String userInput) {
         String runId = CommonUtils.generateId();
         RunTrace runTrace = new RunTrace(runId, sessionId, System.currentTimeMillis());
@@ -89,7 +100,7 @@ public class AgentRuntime {
         while (true) {
             long roundStart = System.currentTimeMillis();
 
-            if (round > MAX_ROUND) {
+            if (round > maxRound) {
                 break;
             }
             round++;
@@ -152,7 +163,7 @@ public class AgentRuntime {
             runTrace.addStepTrace(stepTrace);
         }
 
-        if (round > MAX_ROUND) {
+        if (round > maxRound) {
             res = "reach max round";
         } else if (Objects.equals(res, "")) {
             res = "unknown error";

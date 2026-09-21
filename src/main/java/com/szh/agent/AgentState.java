@@ -34,8 +34,22 @@ public class AgentState {
     private int turnId = 0;
 
     public AgentState(EventStore eventStore) {
+        this(eventStore, null);
+    }
+
+    /**
+     * 带角色指令的构造：在分层 system prompt 之后追加一段角色契约。
+     * <p>
+     * 子 agent（{@code com.szh.agent.subagent.SubAgentExecutor}）用它注入「你是子 agent、独立上下文、
+     * 只回最终结论」的角色指令，既保留项目 AGENTS.md 约定，又叠加子 agent 专属身份。appendix 为空时
+     * 行为与无参构造完全一致。
+     */
+    public AgentState(EventStore eventStore, String rolePromptAppendix) {
         this.eventStore = eventStore;
-        this.systemPrompt = InstructionMemoryLoader.loadSystemPrompt();
+        String base = InstructionMemoryLoader.loadSystemPrompt();
+        this.systemPrompt = (rolePromptAppendix == null || rolePromptAppendix.isBlank())
+                ? base
+                : base + "\n\n" + rolePromptAppendix;
         modelContext.add(new SystemMessageItem(systemPrompt));
     }
 
