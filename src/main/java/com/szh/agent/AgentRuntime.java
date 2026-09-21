@@ -127,14 +127,17 @@ public class AgentRuntime {
                 String toolRes = tool.execute(new ToolContext(sessionId, runId,
                         ConfigUtil.get("project.workspace", System.getProperty("user.dir")), args));
 
-                // 工具完整输出存入文件，上下文中只保留引用
-                String resultId = toolResultStore.store(toolMessage.getToolCode(), toolRes);
-                int lineCount = toolRes == null ? 0 : toolRes.split("\n", -1).length;
                 String toolCallId = toolMessage.getToolCallId();
-                String reference = "结果已存储[result_id=" + resultId + ", lines=" + lineCount
-                        + "]，使用 read_tool_result 工具查阅详情";
+                // 元工具（inlineResult=true，如 read_tool_result）输出直接内联回传，避免二次落盘导致无限套娃；
+                // 普通工具走落盘策略：以 callId 作为 resultId，超阈值才落盘并回传引用存根，小输出直接内联。
+                String toolMsgContent;
+                if (tool != null && tool.inlineResult()) {
+                    toolMsgContent = toolRes;
+                } else {
+                    toolMsgContent = toolResultStore.presentResult(toolCallId, toolMessage.getToolCode(), toolRes);
+                }
 
-                MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), reference);
+                MessageItem toolMsg = new ToolMessageItem(toolCallId, toolMessage.getToolCode(), toolMsgContent);
                 CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, runId, turnId, round, toolMsg,
                         toolMessage.getToolCode(), toolRes);
                 agentState.applyEvent(callToolFinishedEvent);

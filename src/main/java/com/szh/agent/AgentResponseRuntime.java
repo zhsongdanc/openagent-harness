@@ -20,6 +20,7 @@ import com.szh.model.ResponseModel;
 import com.szh.model.dto.output.OutputItem;
 import com.szh.model.dto.output.ResponseModelResp;
 import com.szh.tool.ToolRegistry;
+import com.szh.tool.store.ToolResultStore;
 import com.szh.trace.RunTrace;
 import com.szh.trace.StepTrace;
 import com.szh.trace.TokenTracker;
@@ -79,8 +80,12 @@ public class AgentResponseRuntime {
         agentState.applyEvent(new RunStartedEvent(sessionId, runId, turnId, 0));
         agentState.applyEvent(new UserMessageEvent(sessionId, runId, turnId, 0, new UserMessageItem(userInput), userInput));
 
+        // session 级持久化工具结果存储：整个 run 复用同一实例，保证 resultId 单调递增
+        String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        ToolResultStore toolResultStore = new ToolResultStore(workspace, sessionId);
+
         HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, runId, turnId, 0,
-                ConfigUtil.get("project.workspace", System.getProperty("user.dir")));
+                workspace, toolResultStore);
 
         String res = "";
         int round = 0;

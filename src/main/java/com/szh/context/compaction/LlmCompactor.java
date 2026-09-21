@@ -3,6 +3,8 @@ package com.szh.context.compaction;
 import com.szh.context.dto.AssistantMessageItem;
 import com.szh.context.dto.MessageItem;
 import com.szh.context.dto.SystemMessageItem;
+import com.szh.context.dto.ToolMessageItem;
+import com.szh.tool.store.ToolResultStore;
 import com.szh.utils.ConfigUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,6 +38,7 @@ public class LlmCompactor {
             4. 保留关键数据（文件路径、报错信息、重要 ID 等）
             5. 移除冗余的工具调用细节，只保留结论
             6. 保持摘要简洁，不超过原文的 1/3 长度
+            7. 若历史中出现 result_id=xxx 形式的工具结果把手，必须原样保留这些 result_id，不得改写或省略
             
             请直接输出摘要内容，不要添加额外说明。
             
@@ -69,12 +72,19 @@ public class LlmCompactor {
             return messages;
         }
 
-        // 构建待压缩历史的文本
+        // 构建待压缩历史的文本；同时收集其中仍可回读的落盘把手（P0-3）
         StringBuilder historyText = new StringBuilder();
+        List<String> handles = new ArrayList<>();
         for (MessageItem msg : toCompress) {
             historyText.append("[").append(msg.role()).append("] ")
                     .append(msg.transfer2prompt())
                     .append("\n");
+            if (msg instanceof ToolMessageItem toolMsg) {
+                String rid = ToolResultStore.extractSpilledResultId(toolMsg.getExecResult());
+                if (rid != null) {
+                    handles.add("- " + toolMsg.getToolCode() + " → read_tool_result(result_id=" + rid + ")");
+                }
+            }
         }
 
         // 调用 LLM 生成摘要
@@ -84,10 +94,18 @@ public class LlmCompactor {
             return messages;
         }
 
+        // P0-3：把手清单由代码确定性拼接、不经 LLM 改写，避免 result_id 被摘要吃掉导致落盘文件成孤儿
+        StringBuilder summaryText = new StringBuilder("[历史摘要]\n").append(summary);
+        if (!handles.isEmpty()) {
+            summaryText.append("\n\n[可回读的历史工具结果把手]\n")
+                    .append("以下结果的完整正文仍保存在文件中，需要时用 read_tool_result 按 result_id 分页回读：\n")
+                    .append(String.join("\n", handles));
+        }
+
         // 构建压缩后的上下文：system prompt + 摘要 + 近期消息
         List<MessageItem> result = new ArrayList<>();
         result.add(systemPrompt);
-        result.add(new SystemMessageItem("[历史摘要]\n" + summary));
+        result.add(new SystemMessageItem(summaryText.toString()));
         result.addAll(recentMessages);
 
         int originalTokens = StepCompactor.estimateTotalTokens(messages);

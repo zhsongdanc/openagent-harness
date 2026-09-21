@@ -4,6 +4,8 @@ import com.szh.context.dto.AssistantMessageItem;
 import com.szh.context.dto.MessageItem;
 import com.szh.context.dto.ReasoningMessageItem;
 import com.szh.context.dto.ToolMessageItem;
+import com.szh.tool.store.ToolResultStore;
+import com.szh.utils.CommonUtils;
 import com.szh.utils.ConfigUtil;
 import com.szh.utils.TokenEstimator;
 import lombok.extern.slf4j.Slf4j;
@@ -27,9 +29,12 @@ import java.util.List;
 public class StepCompactor {
 
     /**
-     * 工具结果最大字符数，超过则截断
+     * 工具结果在上下文中的单条最大字符数（与 ToolResultStore 落盘阈值共用同一配置 tool.result.max.chars）。
+     * <p>
+     * 共用一个“单条预算”是关键设计：超过此值的输出在落盘阶段就已被写入文件，上下文只留带 result_id 的存根；
+     * 因此 L0 这里的截断只会作用于“已内联但偶发超长”的兜底场景，不会截掉无文件备份的内联正文（避免静默数据丢失）。
      */
-    private static final int TOOL_RESULT_MAX_CHARS = ConfigUtil.getInt("compaction.tool.result.max.chars", 2000);
+    private static final int TOOL_RESULT_MAX_CHARS = ConfigUtil.getInt("tool.result.max.chars", 4000);
 
     /**
      * 思维链最大保留字符数，超过则截断（DeepSeek Responses API 要求 reasoning_text 必须回传，不能移除）
@@ -97,15 +102,23 @@ public class StepCompactor {
             return msg;
         }
 
-        // 截断工具结果
+        // 截断/清空工具结果（头尾保留，与落盘预览共用 CommonUtils.truncateHeadTail）
         if (msg instanceof ToolMessageItem toolMsg) {
             String result = toolMsg.getExecResult();
-            if (result != null && result.length() > TOOL_RESULT_MAX_CHARS) {
-                int headLen = TOOL_RESULT_MAX_CHARS * 2 / 3;
-                int tailLen = TOOL_RESULT_MAX_CHARS / 3;
-                String truncated = result.substring(0, headLen)
-                        + "\n... [truncated, " + (result.length() - headLen - tailLen) + " chars omitted] ...\n"
-                        + result.substring(result.length() - tailLen);
+            if (result == null) {
+                return msg;
+            }
+            // P0-2：已落盘的旧工具结果 → 清空正文只留 result_id 把手（参考 Claude Code Layer 1 的占位替换）。
+            // 比头尾截断释放更多空间，且因完整正文在文件里，模型随时可用 read_tool_result 回读，不丢数据。
+            String spilledId = ToolResultStore.extractSpilledResultId(result);
+            if (spilledId != null) {
+                return new ToolMessageItem(toolMsg.getCallId(), toolMsg.getToolCode(),
+                        ToolResultStore.clearedPlaceholder(spilledId, toolMsg.getToolCode()));
+            }
+            // 未落盘（内联）结果：无文件备份，只做头尾截断兜底，不能清空（否则不可恢复）
+            if (result.length() > TOOL_RESULT_MAX_CHARS) {
+                String truncated = CommonUtils.truncateHeadTail(result, TOOL_RESULT_MAX_CHARS,
+                        omitted -> "\n... [truncated, " + omitted + " chars omitted] ...\n");
                 return new ToolMessageItem(toolMsg.getCallId(), toolMsg.getToolCode(), truncated);
             }
             return msg;

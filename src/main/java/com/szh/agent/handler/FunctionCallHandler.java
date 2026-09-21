@@ -11,7 +11,6 @@ import com.szh.model.dto.output.FunctionCallOutputItem;
 import com.szh.model.dto.output.OutputItem;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolContext;
-import com.szh.tool.store.ToolResultStore;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -50,15 +49,18 @@ public class FunctionCallHandler implements OutputItemHandler {
                     context.getSessionId(), context.getRunId(), context.getWorkspace(), functionCall.getArguments()));
         }
 
-        // 工具完整输出存入文件，上下文中只保留引用
-        ToolResultStore store = new ToolResultStore(context.getWorkspace(), context.getSessionId());
-        String resultId = store.store(functionCall.getName(), toolRes);
-        int lineCount = toolRes == null ? 0 : toolRes.split("\n", -1).length;
-        String reference = "结果已存储[result_id=" + resultId + ", lines=" + lineCount
-                + "]，使用 read_tool_result 工具查阅详情";
+        // 元工具（inlineResult=true，如 read_tool_result）输出直接内联回传，避免二次落盘导致无限套娃；
+        // 普通工具走落盘策略：以 callId 作为 resultId，超阈值才落盘并回传引用存根，小输出直接内联。
+        String toolMsgContent;
+        if (tool == null || tool.inlineResult()) {
+            toolMsgContent = toolRes;
+        } else {
+            toolMsgContent = context.getToolResultStore()
+                    .presentResult(functionCall.getCallId(), functionCall.getName(), toolRes);
+        }
 
         MessageItem toolMsg = new ToolMessageItem(
-                functionCall.getCallId(), functionCall.getName(), reference);
+                functionCall.getCallId(), functionCall.getName(), toolMsgContent);
         context.getAgentState().applyEvent(new CallToolFinishedEvent(
                 context.getSessionId(), context.getRunId(), context.getTurnId(), context.getRound(), toolMsg,
                 functionCall.getName(), toolRes));

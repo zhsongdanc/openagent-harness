@@ -3,6 +3,7 @@ package com.szh.agent.handler;
 
 import com.szh.agent.AgentState;
 import com.szh.tool.ToolRegistry;
+import com.szh.tool.store.ToolResultStore;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -31,4 +32,10 @@ public class HandleContext {
     private int round;
 
     private String workspace;
+
+    /**
+     * session 级持久化的工具结果存储：由运行时在 run 开始时创建并复用，
+     * 保证 resultId 在整个会话内单调递增，避免每次调用都覆盖同一文件。
+     */
+    private ToolResultStore toolResultStore;
 }

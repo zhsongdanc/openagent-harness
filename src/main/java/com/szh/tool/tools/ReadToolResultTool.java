@@ -51,6 +51,14 @@ public class ReadToolResultTool implements Tool {
         return TOOL_DEFINITION;
     }
 
+    /**
+     * read_tool_result 的输出就是模型要读的正文，必须直接内联回传，不能再落盘成存根（否则无限套娃）。
+     */
+    @Override
+    public boolean inlineResult() {
+        return true;
+    }
+
     @Override
     public String execute(ToolContext toolContext) {
         JsonNode json = parseArgs(toolContext.getArgs());
