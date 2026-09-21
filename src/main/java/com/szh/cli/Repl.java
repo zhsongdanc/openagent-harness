@@ -3,6 +3,9 @@ package com.szh.cli;
 import com.szh.agent.AgentResponseRuntime;
 import com.szh.agent.AgentRuntime;
 import com.szh.agent.AgentState;
+import com.szh.event.Event;
+import com.szh.event.ModeSwitchedEvent;
+import com.szh.event.TodoUpdatedEvent;
 import com.szh.mcp.client.McpClient;
 import com.szh.mcp.client.McpClientManager;
 import com.szh.mcp.client.McpToolInfo;
@@ -10,6 +13,9 @@ import com.szh.model.ModelFactory;
 import com.szh.store.EventStoreFactory;
 import com.szh.store.StoreEnum;
 import com.szh.tool.ToolRegistry;
+import com.szh.tool.tools.meta.AgentMode;
+import com.szh.tool.tools.meta.AgentModeStore;
+import com.szh.tool.tools.meta.TodoStore;
 import com.szh.trace.replay.TraceReplay;
 import com.szh.utils.CommonUtils;
 import com.szh.utils.ConfigUtil;
@@ -19,6 +25,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * @author demussong
@@ -123,9 +130,31 @@ public class Repl {
         if (this.sessionId == null) {
             this.sessionId = CommonUtils.generateId();
         }
+        // 从事件流回灌元工具状态（待办清单 / 运行模式），使恢复的会话延续 agent 自组织进度
+        restoreMetaState();
         // 会话重置后运行时需重建，避免持有旧 AgentState
         this.chatRuntime = null;
         this.responseRuntime = null;
+    }
+
+    /**
+     * 扫描事件流，把最后一次 TodoUpdatedEvent / ModeSwitchedEvent 回灌进各自的内存 store，
+     * 让 {@code /session <id>} 恢复后 REPL 仍能渲染待办清单、运行时仍延续 PLAN/NORMAL 模式。
+     * 只读回放，失败不阻断会话初始化。
+     */
+    private void restoreMetaState() {
+        try {
+            List<Event> events = agentState.getEventStore().getEvents(sessionId);
+            for (Event e : events) {
+                if (e instanceof TodoUpdatedEvent t) {
+                    TodoStore.get().update(sessionId, t.getTodos());
+                } else if (e instanceof ModeSwitchedEvent m) {
+                    AgentModeStore.get().set(sessionId, AgentMode.from(m.getMode()));
+                }
+            }
+        } catch (RuntimeException ex) {
+            log.warn("restore meta state failed for session {}", sessionId, ex);
+        }
     }
 
     /**
@@ -155,6 +184,7 @@ public class Repl {
             try {
                 String res = ask(trimmed);
                 show(res);
+                renderTodos();
             } catch (Exception e) {
                 log.error("run failed", e);
                 System.out.println("[出错] " + e.getMessage());
@@ -179,6 +209,33 @@ public class Repl {
             return;
         }
         System.out.println("\nagent> " + (res == null ? "" : res));
+    }
+
+    /**
+     * 每轮结束后自动渲染待办清单（若存在），让用户实时看到 agent 的多步任务进度；无清单则不打印
+     */
+    private void renderTodos() {
+        String rendered = TodoStore.get().render(sessionId);
+        if (!rendered.isEmpty()) {
+            System.out.println();
+            System.out.println(rendered);
+        }
+    }
+
+    /**
+     * /mode [plan|normal]：查看/切换会话运行模式（与 switch_mode 工具写同一份 AgentModeStore）。
+     * 用户主动切换同样落 ModeSwitchedEvent 留痕，使 {@code /session} 恢复能回灌模式。
+     */
+    private void handleMode(String[] parts) {
+        AgentModeStore store = AgentModeStore.get();
+        if (parts.length < 2) {
+            System.out.println("当前模式: " + store.get(sessionId).label() + "（可 /mode plan|normal 切换）");
+            return;
+        }
+        AgentMode target = AgentMode.from(parts[1]);
+        store.set(sessionId, target);
+        agentState.applyEvent(new ModeSwitchedEvent(sessionId, null, null, 0, target.name()));
+        System.out.println("已切换模式: " + target.label());
     }
 
     private AgentRuntime chat() {
@@ -231,6 +288,11 @@ public class Repl {
                 }
             }
             case "/model" -> printModel();
+            case "/todo" -> {
+                String rendered = TodoStore.get().render(sessionId);
+                System.out.println(rendered.isEmpty() ? "（当前无待办清单）" : rendered);
+            }
+            case "/mode" -> handleMode(parts);
             case "/clear" -> {
                 // 尽力清屏：ANSI 转义在多数终端生效，不支持时退化为空行
                 System.out.print("\033[H\033[2J");
@@ -327,6 +389,7 @@ public class Repl {
         System.out.println(" openagent-harness 交互式会话 (REPL)");
         System.out.println(" session : " + sessionId);
         System.out.println(" runtime : " + mode + "   store: " + EventStoreFactory.getStoreEngine());
+        System.out.println(" mode    : " + AgentModeStore.get().get(sessionId));
         System.out.println(" 输入自然语言对话，/help 查看命令，/exit 退出");
         System.out.println("======================================================");
     }
@@ -341,6 +404,8 @@ public class Repl {
                   /session <id>         恢复指定已持久化 session
                   /runtime [chat|response]  查看/切换运行时链路（共享同一 session 上下文）
                   /model                查看当前 provider/model/store/stream 配置
+                  /todo                 查看当前待办清单（agent 用 todo_write 维护）
+                  /mode [plan|normal]   查看/切换运行模式（plan=只读规划，normal=全部工具）
                   /mcp [reload|tools]   查看 MCP Server 状态 / 重载配置 / 列出 MCP 工具
                   /replay [id] [--html] 回放执行时间线；--html 额外导出可视化文件
                   /clear                清屏

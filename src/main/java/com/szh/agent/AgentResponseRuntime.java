@@ -23,8 +23,10 @@ import com.szh.model.StreamListener;
 import com.szh.model.dto.ToolCall;
 import com.szh.model.dto.output.OutputItem;
 import com.szh.model.dto.output.ResponseModelResp;
+import com.szh.tool.Tool;
 import com.szh.tool.ToolRegistry;
 import com.szh.tool.store.ToolResultStore;
+import com.szh.tool.tools.meta.PlanModePolicy;
 import com.szh.trace.RunTrace;
 import com.szh.trace.StepTrace;
 import com.szh.trace.TokenTracker;
@@ -125,11 +127,14 @@ public class AgentResponseRuntime {
             List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
             // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt（只改副本，不动事件真相源）
             LongTermMemory.get().injectRecall(callContext, userInput);
+            // PLAN 模式：往 system prompt 追加规划契约，并把工具收敛为只读子集（会话级模式，每轮读取）
+            PlanModePolicy.decorateContext(callContext, sessionId);
+            List<Tool> effectiveTools = PlanModePolicy.effectiveTools(toolRegistry.getTools(), sessionId);
             // 流式输出：增量 token 实时打到控制台（model.stream.enabled 可关）
             StreamListener streamListener = ConfigUtil.getBoolean("model.stream.enabled", true)
                     ? new ConsoleStreamListener(ConfigUtil.getBoolean("model.stream.printReasoning", false))
                     : null;
-            ResponseModelResp modelResp = model.call(callContext, toolRegistry.getTools(), streamListener);
+            ResponseModelResp modelResp = model.call(callContext, effectiveTools, streamListener);
             log.debug("call model, round:{}", round);
 
             boolean anyToolCall = false;

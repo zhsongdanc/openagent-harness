@@ -9,12 +9,15 @@ import com.szh.event.CallToolStartedEvent;
 import com.szh.event.Event;
 import com.szh.event.EventEnum;
 import com.szh.event.ModelResponseEvent;
+import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.ReasoningEvent;
 import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
+import com.szh.event.TodoUpdatedEvent;
 import com.szh.event.UserMessageEvent;
 import com.szh.model.dto.ToolCall;
 import com.szh.store.EventStoreFactory;
+import com.szh.tool.tools.meta.TodoItem;
 import com.szh.utils.ConfigUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -132,7 +135,33 @@ public final class TraceReplay {
                 String elapsed = start == null ? "" : "  (elapsed " + (e.getTimestamp() - start) + "ms)";
                 yield "■ DONE" + elapsed + ": " + clip(nvl(c.getResult()));
             }
+            case TODO_UPDATED -> {
+                TodoUpdatedEvent t = (TodoUpdatedEvent) e;
+                yield "[TODO] " + summarizeTodos(t.getTodos());
+            }
+            case MODE_SWITCHED -> {
+                ModeSwitchedEvent m = (ModeSwitchedEvent) e;
+                yield "[MODE] → " + nvl(m.getMode());
+            }
         };
+    }
+
+    /**
+     * 待办清单压成单行摘要："3 项(1 完成): a; b; c"，供文本时间线紧凑展示
+     */
+    private static String summarizeTodos(List<TodoItem> todos) {
+        if (todos == null || todos.isEmpty()) {
+            return "(清空)";
+        }
+        long done = todos.stream().filter(t -> t.safeStatus() == com.szh.tool.tools.meta.TodoStatus.COMPLETE).count();
+        StringBuilder sb = new StringBuilder();
+        for (TodoItem t : todos) {
+            if (sb.length() > 0) {
+                sb.append("; ");
+            }
+            sb.append(t.safeStatus().icon()).append(' ').append(nvl(t.getContent()));
+        }
+        return todos.size() + " 项(" + done + " 完成): " + clip(sb.toString());
     }
 
     private static String userContent(Event e) {
@@ -209,6 +238,7 @@ public final class TraceReplay {
                 .append(".USER .tag{color:#4ea1ff;}.THINK .tag{color:#b58cff;}.MODEL .tag{color:#41d19a;}")
                 .append(".TOOLSTART .tag{color:#ffb454;}.TOOLDONE .tag{color:#8ee06a;}")
                 .append(".DONE .tag{color:#ff6b81;}.RUNSTART .tag{color:#8b93a7;}")
+                .append(".TODO .tag{color:#ffd479;}.MODE .tag{color:#79e0ff;}")
                 .append("details>summary{cursor:pointer;color:#8b93a7;}")
                 .append("</style></head><body>");
         sb.append("<header><h1>Trace Replay</h1><div class=\"meta\">session=")
@@ -294,6 +324,22 @@ public final class TraceReplay {
                 cls = "DONE";
                 tag = "DONE";
                 body = (start == null ? "" : "(elapsed " + (e.getTimestamp() - start) + "ms) ") + nvl(c.getResult());
+            }
+            case TODO_UPDATED -> {
+                TodoUpdatedEvent t = (TodoUpdatedEvent) e;
+                cls = "TODO";
+                tag = "TODO";
+                StringBuilder todoSb = new StringBuilder();
+                for (TodoItem item : t.getTodos()) {
+                    todoSb.append(item.safeStatus().icon()).append(' ').append(nvl(item.getContent())).append('\n');
+                }
+                body = todoSb.toString();
+            }
+            case MODE_SWITCHED -> {
+                ModeSwitchedEvent m = (ModeSwitchedEvent) e;
+                cls = "MODE";
+                tag = "MODE";
+                body = nvl(m.getMode());
             }
             default -> {
                 cls = "RUNSTART";

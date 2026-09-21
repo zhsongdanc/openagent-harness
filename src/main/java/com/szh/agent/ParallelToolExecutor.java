@@ -162,8 +162,13 @@ public class ParallelToolExecutor {
                 log.warn("tool not found: {}", call.toolCode());
                 result = "tool not found: " + call.toolCode();
             } else {
-                result = tool.execute(new ToolContext(env.sessionId(), env.runId(),
-                        env.workspace(), call.toolArgs()));
+                // 注入 AgentState 与轮次信息：元工具（todo_write / switch_mode）据此把领域事件落进事件日志
+                ToolContext ctx = new ToolContext(env.sessionId(), env.runId(),
+                        env.workspace(), call.toolArgs());
+                ctx.setAgentState(env.agentState());
+                ctx.setTurnId(env.turnId());
+                ctx.setRound(env.round());
+                result = tool.execute(ctx);
             }
         } catch (Exception e) {
             threw = true;

@@ -13,10 +13,14 @@ import com.szh.event.ModelResponseEvent;
 import com.szh.event.ReasoningEvent;
 import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
+import com.szh.event.TodoUpdatedEvent;
+import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.UserMessageEvent;
+import com.szh.tool.tools.meta.TodoItem;
 import com.szh.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -84,6 +88,10 @@ public final class EventJsonCodec {
             }
             case RUN_COMPLETED -> new RunCompletedEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
                     JsonUtil.parse(payload, String.class));
+            case TODO_UPDATED -> new TodoUpdatedEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
+                    parseTodos(payload));
+            case MODE_SWITCHED -> new ModeSwitchedEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
+                    JsonUtil.parse(payload, String.class));
         };
         event.setId(s.eventId());
         event.setTimestamp(s.timestamp());
@@ -94,5 +102,14 @@ public final class EventJsonCodec {
         Map<String, String> data = JsonUtil.parse(payload, new TypeReference<Map<String, String>>() {
         });
         return data == null ? Map.of() : data;
+    }
+
+    /**
+     * 待办清单负载反序列化：payload 是 {@code List<TodoItem>} 的 JSON；空/非法时回退空列表
+     */
+    private static List<TodoItem> parseTodos(String payload) {
+        List<TodoItem> todos = JsonUtil.parse(payload, new TypeReference<List<TodoItem>>() {
+        });
+        return todos == null ? List.of() : todos;
     }
 }

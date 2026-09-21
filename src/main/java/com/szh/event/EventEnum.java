@@ -12,6 +12,8 @@ public enum EventEnum {
     MODEL_REASONING,
     CALL_TOOL_STARTED,
     CALL_TOOL_FINISHED,
+    TODO_UPDATED,
+    MODE_SWITCHED,
     RUN_COMPLETED,
     ;
 }

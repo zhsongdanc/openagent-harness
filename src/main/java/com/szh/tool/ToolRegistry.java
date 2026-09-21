@@ -19,6 +19,9 @@ import com.szh.tool.tools.git.GitStatusTool;
 import com.szh.tool.tools.memory.ForgetTool;
 import com.szh.tool.tools.memory.RecallTool;
 import com.szh.tool.tools.memory.RememberTool;
+import com.szh.tool.tools.meta.AskUserQuestionTool;
+import com.szh.tool.tools.meta.SwitchModeTool;
+import com.szh.tool.tools.meta.TodoWriteTool;
 import com.szh.tool.tools.subagent.DispatchSubAgentTool;
 import com.szh.tool.tools.shell.CatTool;
 import com.szh.tool.tools.shell.FindTool;
@@ -102,6 +105,7 @@ public class ToolRegistry {
         allTools.addAll(fileTools());
         allTools.addAll(gitTools());
         allTools.addAll(memoryTools());
+        allTools.addAll(metaTools());
         allTools.addAll(subAgentTools());
         allTools.addAll(mcpTools());
 
@@ -145,6 +149,18 @@ public class ToolRegistry {
             return List.of();
         }
         return List.of(new RememberTool(), new RecallTool(), new ForgetTool());
+    }
+
+    /**
+     * 元工具（todo_write / ask_user_question / switch_mode）：agent 自组织能力的基础——
+     * 自己维护多步任务清单、结构化问询用户、在 NORMAL/PLAN 模式间切换。
+     * meta.tools.enabled=false 可整体关闭退回纯执行型 agent。
+     */
+    private List<Tool> metaTools() {
+        if (!ConfigUtil.getBoolean("meta.tools.enabled", true)) {
+            return List.of();
+        }
+        return List.of(new TodoWriteTool(), new AskUserQuestionTool(), new SwitchModeTool());
     }
 
     /**
