@@ -6,7 +6,9 @@ import com.szh.context.dto.SystemMessageItem;
 import com.szh.utils.ConfigUtil;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -18,8 +20,9 @@ import java.util.List;
  * <p>
  * 三个能力：
  * <ul>
- *   <li>{@link #remember(Memory)} / {@link #rememberAll(List)}：写入记忆；</li>
- *   <li>{@link #injectRecall(List, String)}：按 query 召回并合并进本轮 system prompt；</li>
+ *   <li>{@link #remember(Memory)} / {@link #rememberAll(List)}：写入记忆（带去重更新与容量淘汰）；</li>
+ *   <li>{@link #injectRecall(List, String)} / {@link #recall(String, MemoryScope, int)}：按 query 召回；</li>
+ *   <li>{@link #forget(String)} / {@link #forgetByQuery(String, MemoryScope, int)}：遗忘（供工具主动调用）；</li>
  *   <li>{@link #reflectAndStore(String, List, Summarizer)}：run 结束后蒸馏对话为记忆。</li>
  * </ul>
  *
@@ -35,6 +38,14 @@ public class LongTermMemory {
     private final boolean retrievalEnabled;
     private final boolean reflectionEnabled;
     private final int topK;
+    /** 写入去重开关：命中近似既有记忆时更新而非新增 */
+    private final boolean dedupEnabled;
+    /** 去重相似度阈值 [0,1]，达到即判为重复 */
+    private final double dedupThreshold;
+    /** 去重时拉取的候选条数 */
+    private final int dedupCandidates;
+    /** 记忆库容量上限，<=0 表示不限；超限按最旧淘汰 */
+    private final int capacityMax;
     /** 存储初始化失败时为 null，所有操作自动变为 no-op */
     private final MemoryStore store;
 
@@ -43,6 +54,10 @@ public class LongTermMemory {
         this.retrievalEnabled = ConfigUtil.getBoolean("memory.retrieval.enabled", true);
         this.reflectionEnabled = ConfigUtil.getBoolean("memory.reflection.enabled", true);
         this.topK = ConfigUtil.getInt("memory.retrieval.topK", 5);
+        this.dedupEnabled = ConfigUtil.getBoolean("memory.dedup.enabled", true);
+        this.dedupThreshold = ConfigUtil.getDouble("memory.dedup.threshold", 0.72);
+        this.dedupCandidates = ConfigUtil.getInt("memory.dedup.candidates", 8);
+        this.capacityMax = ConfigUtil.getInt("memory.capacity.max", 1000);
 
         MemoryStore s = null;
         if (enabled) {
@@ -54,8 +69,9 @@ public class LongTermMemory {
             }
         }
         this.store = s;
-        log.info("LongTermMemory: enabled={}, retrieval={}, reflection={}, storeReady={}",
-                enabled, retrievalEnabled, reflectionEnabled, store != null);
+        log.info("LongTermMemory: enabled={}, retrieval={}, reflection={}, dedup={}(th={}), capacity={}, storeReady={}",
+                enabled, retrievalEnabled, reflectionEnabled, dedupEnabled, dedupThreshold,
+                capacityMax > 0 ? capacityMax : "unlimited", store != null);
     }
 
     public static LongTermMemory get() {
@@ -82,14 +98,132 @@ public class LongTermMemory {
 
     // ---------------- 写入 ----------------
 
-    public void remember(Memory memory) {
-        if (!isActive() || memory == null) {
+    public String remember(Memory memory) {
+        if (!isActive() || memory == null
+                || memory.getContent() == null || memory.getContent().isBlank()) {
+            return null;
+        }
+        try {
+            Memory target = memory;
+            if (dedupEnabled) {
+                Memory dup = findDuplicate(memory);
+                if (dup != null) {
+                    target = merge(dup, memory);
+                    log.info("LongTermMemory: dedup hit, update existing id={} instead of insert", dup.getId());
+                }
+            }
+            store.save(target);
+            evictIfOverCapacity();
+            return target.getId();
+        } catch (Throwable t) {
+            log.error("LongTermMemory: remember failed", t);
+            return null;
+        }
+    }
+
+    /**
+     * 在同作用域、同分类的既有记忆里找近似重复项：先用检索拉候选，再逐一算相似度，
+     * 取超过阈值的最高分者；找不到或异常返回 null（即按新记忆插入）。
+     */
+    private Memory findDuplicate(Memory incoming) {
+        try {
+            List<Memory> candidates = store.search(buildDedupQuery(incoming), dedupCandidates, incoming.getScope());
+            Memory best = null;
+            double bestScore = 0d;
+            for (Memory c : candidates) {
+                if (!sameCategory(c, incoming)) {
+                    continue;
+                }
+                if (incoming.getId() != null && incoming.getId().equals(c.getId())) {
+                    continue;
+                }
+                double score = MemorySimilarity.similarity(incoming, c);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = c;
+                }
+            }
+            return bestScore >= dedupThreshold ? best : null;
+        } catch (Throwable t) {
+            log.warn("LongTermMemory: findDuplicate failed, treat as new. ({})", t.toString());
+            return null;
+        }
+    }
+
+    /**
+     * 合并新旧记忆：沿用旧记忆的 id 与 createdAt（save 会覆盖同 id），正文/标题以新值为准，
+     * 关键词取并集，来源会话优先用新值。
+     */
+    private Memory merge(Memory old, Memory incoming) {
+        Memory merged = new Memory();
+        merged.setId(old.getId());
+        merged.setCreatedAt(old.getCreatedAt());
+        merged.setContent(incoming.getContent());
+        merged.setTitle(incoming.getTitle() != null && !incoming.getTitle().isBlank()
+                ? incoming.getTitle() : old.getTitle());
+        merged.setCategory(incoming.getCategory() != null ? incoming.getCategory() : old.getCategory());
+        merged.setScope(old.getScope() != null ? old.getScope() : incoming.getScope());
+        merged.setKeywords(unionKeywords(old.getKeywords(), incoming.getKeywords()));
+        merged.setSourceSessionId(incoming.getSourceSessionId() != null
+                ? incoming.getSourceSessionId() : old.getSourceSessionId());
+        return merged;
+    }
+
+    private static List<String> unionKeywords(List<String> a, List<String> b) {
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        for (List<String> src : List.of(a == null ? List.<String>of() : a, b == null ? List.<String>of() : b)) {
+            for (String s : src) {
+                if (s != null && !s.isBlank()) {
+                    set.add(s.trim());
+                }
+            }
+        }
+        return new ArrayList<>(set);
+    }
+
+    private static boolean sameCategory(Memory a, Memory b) {
+        MemoryCategory ca = a.getCategory() == null ? MemoryCategory.OTHER : a.getCategory();
+        MemoryCategory cb = b.getCategory() == null ? MemoryCategory.OTHER : b.getCategory();
+        return ca == cb;
+    }
+
+    /**
+     * 构造去重候选检索词：标题 + 关键词 + 正文前若干字，尽量命中相似条目
+     */
+    private static String buildDedupQuery(Memory m) {
+        StringBuilder sb = new StringBuilder();
+        if (m.getTitle() != null) {
+            sb.append(m.getTitle()).append(' ');
+        }
+        if (m.getKeywords() != null && !m.getKeywords().isEmpty()) {
+            sb.append(String.join(" ", m.getKeywords())).append(' ');
+        }
+        String content = m.getContent() == null ? "" : m.getContent().trim();
+        sb.append(content.length() > 60 ? content.substring(0, 60) : content);
+        return sb.toString().trim();
+    }
+
+    /**
+     * 容量淘汰：超过上限时按更新时间从旧到新删除多余条目（listRecent 为最新在前，尾部即最旧）
+     */
+    private void evictIfOverCapacity() {
+        if (capacityMax <= 0) {
             return;
         }
         try {
-            store.save(memory);
+            int total = store.count();
+            if (total <= capacityMax) {
+                return;
+            }
+            List<Memory> all = store.listRecent(total);
+            int removed = 0;
+            for (int i = capacityMax; i < all.size(); i++) {
+                store.deleteById(all.get(i).getId());
+                removed++;
+            }
+            log.info("LongTermMemory: evicted {} oldest memories (capacity={})", removed, capacityMax);
         } catch (Throwable t) {
-            log.error("LongTermMemory: remember failed", t);
+            log.error("LongTermMemory: evict failed", t);
         }
     }
 
@@ -108,11 +242,19 @@ public class LongTermMemory {
      * 按 query 召回相关记忆（作用域不限），失败或无结果返回空列表
      */
     public List<Memory> recall(String query) {
+        return recall(query, null, topK);
+    }
+
+    /**
+     * 按 query + 作用域召回，limit<=0 时回退默认 topK；scope 为 null 不限作用域
+     */
+    public List<Memory> recall(String query, MemoryScope scope, int limit) {
         if (!isActive() || !retrievalEnabled || query == null || query.isBlank()) {
             return Collections.emptyList();
         }
+        int k = limit > 0 ? limit : topK;
         try {
-            return store.search(query, topK);
+            return store.search(query, k, scope);
         } catch (Throwable t) {
             log.error("LongTermMemory: recall failed, query={}", query, t);
             return Collections.emptyList();
@@ -123,8 +265,44 @@ public class LongTermMemory {
      * 召回并格式化为可注入 prompt 的文本块；无结果返回空串
      */
     public String recallBlock(String query) {
-        List<Memory> hits = recall(query);
+        return recallBlock(query, null, topK);
+    }
+
+    public String recallBlock(String query, MemoryScope scope, int limit) {
+        List<Memory> hits = recall(query, scope, limit);
         return hits.isEmpty() ? "" : format(hits);
+    }
+
+    // ---------------- 遗忘 ----------------
+
+    /**
+     * 按 id 删除一条记忆，成功返回 true
+     */
+    public boolean forget(String id) {
+        if (!isActive() || id == null || id.isBlank()) {
+            return false;
+        }
+        try {
+            store.deleteById(id);
+            return true;
+        } catch (Throwable t) {
+            log.error("LongTermMemory: forget failed, id={}", id, t);
+            return false;
+        }
+    }
+
+    /**
+     * 按检索词删除命中的记忆（scope 为 null 不限），返回实际删除条数
+     */
+    public int forgetByQuery(String query, MemoryScope scope, int limit) {
+        List<Memory> hits = recall(query, scope, limit);
+        int removed = 0;
+        for (Memory m : hits) {
+            if (forget(m.getId())) {
+                removed++;
+            }
+        }
+        return removed;
     }
 
     /**
@@ -166,7 +344,7 @@ public class LongTermMemory {
 
     // ---------------- 展示格式 ----------------
 
-    private String format(List<Memory> hits) {
+    public String format(List<Memory> hits) {
         StringBuilder sb = new StringBuilder();
         sb.append("===== 相关长期记忆 (top ").append(hits.size()).append(") =====\n");
         int i = 1;

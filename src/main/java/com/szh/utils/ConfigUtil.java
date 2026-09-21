@@ -108,6 +108,19 @@ public class ConfigUtil {
         return value == null ? defaultValue : Boolean.parseBoolean(value);
     }
 
+    public static double getDouble(String key, double defaultValue) {
+        String value = get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            log.warn("config {} is not a double: {}, fallback to {}", key, value, defaultValue);
+            return defaultValue;
+        }
+    }
+
     /**
      * 清空缓存，配置文件热更新或单测隔离时使用
      */
