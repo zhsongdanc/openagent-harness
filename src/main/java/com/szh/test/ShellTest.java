@@ -57,7 +57,7 @@ public class ShellTest {
         // 80 条 × ~2000 tokens ≈ 160K tokens（截断后 ~64K），足以触发 L0 压缩。
         // 注意：消息数不宜过多（DeepSeek API 有消息数量限制），内容用纯填充文本避免误导模型。
         List<MessageItem> ctx = new ArrayList<>(agentState.getModelContext());
-        int fakeMsgCount = 10;
+        int fakeMsgCount = 20;
         int charsPerMsg = 5000;
         for (int i = 0; i < fakeMsgCount; i++) {
             StringBuilder content = new StringBuilder();

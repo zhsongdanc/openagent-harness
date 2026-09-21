@@ -29,7 +29,6 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -94,14 +93,7 @@ public class AgentResponseRuntime {
             long roundStart = System.currentTimeMillis();
 
             // 上下文压缩检查：在调用 model 前判断是否需要压缩
-            List<MessageItem> ctx = agentState.getModelContext();
-            int ctxTokens = StepCompactor.estimateTotalTokens(ctx);
-            // 统计上下文中各类型 item 数量，便于排查 reasoning 是否正确回传
-            long reasoningCount = ctx.stream().filter(m -> m instanceof ReasoningMessageItem).count();
-            long toolCallCount = ctx.stream().filter(m -> m instanceof AssistantMessageItem a && a.isCallTool()).count();
-            long toolResultCount = ctx.stream().filter(m -> m instanceof ToolMessageItem).count();
-            log.info("[Round {}] 上下文状态: 消息数={}, 估算tokens={}, 类型分布=[reasoning={}, toolCall={}, toolResult={}]",
-                    round, ctx.size(), ctxTokens, reasoningCount, toolCallCount, toolResultCount);
+            logContextState(round, agentState.getModelContext());
             List<MessageItem> compacted = compactionManager.maybeCompact(new ArrayList<>(agentState.getModelContext()));
             if (compacted.size() != agentState.getModelContext().size()) {
                 log.info("[Round {}] >>> 压缩已执行: 消息数 {} -> {} <<<", round, agentState.getModelContext().size(), compacted.size());
@@ -110,8 +102,7 @@ public class AgentResponseRuntime {
 
             ResponseModelResp modelResp = model.call(
                     new ArrayList<>(agentState.getModelContext()), toolRegistry.getTools());
-            String currentTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(System.currentTimeMillis());
-            log.info("call model, round:{}, current time: {}", round, currentTime);
+            log.debug("call model, round:{}", round);
 
             boolean anyToolCall = false;
             String lastMessage = null;
@@ -149,6 +140,22 @@ public class AgentResponseRuntime {
 
     private String getTurnName(int turnId) {
         return "turn_" + turnId;
+    }
+
+    /**
+     * 打印当前轮上下文状态（消息数、估算 tokens、各类型 item 分布），
+     * 便于排查 reasoning 是否正确回传。仅用于诊断日志，与主流程解耦。
+     */
+    private void logContextState(int round, List<MessageItem> ctx) {
+        if (!log.isInfoEnabled()) {
+            return;
+        }
+        int ctxTokens = StepCompactor.estimateTotalTokens(ctx);
+        long reasoningCount = ctx.stream().filter(m -> m instanceof ReasoningMessageItem).count();
+        long toolCallCount = ctx.stream().filter(m -> m instanceof AssistantMessageItem a && a.isCallTool()).count();
+        long toolResultCount = ctx.stream().filter(m -> m instanceof ToolMessageItem).count();
+        log.info("[Round {}] 上下文状态: 消息数={}, 估算tokens={}, 类型分布=[reasoning={}, toolCall={}, toolResult={}]",
+                round, ctx.size(), ctxTokens, reasoningCount, toolCallCount, toolResultCount);
     }
 
     public void printLog(String sessionId) {

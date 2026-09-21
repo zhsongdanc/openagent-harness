@@ -66,7 +66,7 @@ public class ContextCompactionManager {
 
         double ratio = (double) currentTokens / contextWindow;
         String ratioStr = String.format("%.2f", ratio);
-        log.debug("[Compaction] 检查: tokens={}, ratio={} (阈值={}), 消息数={}",
+        log.info("[Compaction] 检查: tokens={}, ratio={} (阈值={}), 消息数={}",
                 currentTokens, ratioStr, threshold, messages.size());
 
         // 未超过阈值，不压缩
