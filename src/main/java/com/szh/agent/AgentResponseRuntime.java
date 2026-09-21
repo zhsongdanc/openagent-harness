@@ -84,9 +84,11 @@ public class AgentResponseRuntime {
         // session 级持久化工具结果存储：整个 run 复用同一实例，保证 resultId 单调递增
         String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
         ToolResultStore toolResultStore = new ToolResultStore(workspace, sessionId);
+        // run 级熔断器：检测连续失败 / 重复调用，及时刹车
+        LoopGuard loopGuard = new LoopGuard();
 
         HandleContext handleContext = new HandleContext(agentState, toolRegistry, sessionId, runId, turnId, 0,
-                workspace, toolResultStore);
+                workspace, toolResultStore, loopGuard);
 
         String res = "";
         int round = 0;
@@ -126,6 +128,12 @@ public class AgentResponseRuntime {
 
             StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
             runTrace.addStepTrace(stepTrace);
+
+            // 熔断触发：结束本次 run，把原因作为最终结果回传
+            if (loopGuard.isTripped()) {
+                res = loopGuard.getViolation().getReason();
+                break;
+            }
 
             if (!anyToolCall) {
                 if (lastMessage != null) {

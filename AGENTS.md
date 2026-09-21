@@ -30,6 +30,28 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
 - **工具结果外存**：超阈值的工具输出落盘到 `{workspace}/.agent-data/tool-results/{sessionId}/{callId}.txt`，
   上下文只保留引用存根，模型用 `read_tool_result` 分页读取；`read_tool_result` 自身输出必须豁免落盘（否则无限套娃）。
 
+## 安全与可靠性（P0）
+
+- **shell 安全双层**（`com.szh.tool.security`，总开关 `shell.security.enabled`）：所有 `ShellCommandTool`
+  执行前先过 `PermissionController` 策略闸门，再由 `SandboxExecutor` 包装进 OS 级沙箱。
+  - **权限层**（对标 Claude Code allow/ask/deny）：`CommandClassifier` 按「可执行文件+关键参数」把命令分为
+    只读/写入/联网/危险；`PathGuard` 做路径穿越防护（`..` 归一化 + 真实路径包含校验）；决策三态 ALLOW/DENY/NEED_CONFIRM，
+    确认走 `PermissionPrompter`（交互式读 stdin，非交互按 `shell.permission.autoApprove` 兜底，默认拒绝）。
+  - **沙箱层**（对标 Codex，不用 Docker）：macOS 用系统自带 `sandbox-exec`/Seatbelt（`SeatbeltSandbox`），
+    三档 `shell.sandbox.mode` = read-only / workspace-write / full-access；workspace-write 只放开
+    `shell.sandbox.writable.extra`（含工作区、`~/.m2` 等构建缓存、临时目录）的写权限，默认禁网，
+    仅 `shell.sandbox.network.tools`（git/mvn）豁免联网。其它平台降级为 `DirectSandbox`（靠权限层兜底）。
+  - **关键坑**：macOS `/tmp`→`/private/tmp`、`/var/folders`→`/private/var/folders` 是符号链接，而 Seatbelt `subpath`
+    与路径包含判断都按**规范化真实路径**匹配，故 `SandboxPolicy.real()`/`PathGuard.canonical()` 必须 `toRealPath()`
+    解析符号链接，否则这些目录会被误判越界（表现为 mvn 写 jansi 锁文件 Operation not permitted）。
+- **模型调用重试**（`com.szh.utils.RetryExecutor` + `RetryPolicy`）：两个 DeepSeek 模型都接入指数退避重试。
+  非 200 抛 `ModelApiException` 携带状态码与 `Retry-After`；仅 429/408/5xx 与网络 IO 异常可重试，其余 4xx 立即失败。
+  请求带 `model.request.timeoutSeconds` 超时。新增 Provider 务必复用 `RetryExecutor` 而非各写一套。
+- **循环熔断**（`com.szh.agent.LoopGuard`，run 级实例）：检测「连续失败」（工具抛异常或返回错误结果达
+  `agent.guard.maxConsecutiveFailures`）与「重复调用」（同工具+同参数连续达 `agent.guard.maxRepeatCalls`），
+  触发即结束 run 并回传原因。两条运行时都接入：`AgentRuntime` 内联、`AgentResponseRuntime` 经 `HandleContext`
+  传给 `FunctionCallHandler`。工具执行必须 try-catch 兜底，异常转错误结果计入熔断，不再让整个 run 崩溃。
+
 ## 存储引擎
 
 由 `store.engine` 切换：`MEMORY`（进程内、非持久）、`MYSQL`（落库）、

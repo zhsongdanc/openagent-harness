@@ -17,12 +17,16 @@ import com.szh.context.dto.ToolMessageItem;
 import com.szh.model.dto.output.*;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolDefinition;
+import com.szh.utils.ConfigUtil;
+import com.szh.utils.RetryExecutor;
+import com.szh.utils.RetryPolicy;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -50,34 +54,47 @@ public class DeepSeekResponseModel implements ResponseModel {
     @Override
     public ResponseModelResp call(List<MessageItem> messages, List<Tool> tools) {
         try {
-            ObjectNode request = mapper.createObjectNode();
-            request.put("model", modelName);
-            request.set("input", convertInput(messages));
-
-            if (tools != null && !tools.isEmpty()) {
-                request.set("tools", convertTools(tools));
-                request.put("tool_choice", "auto");
-            }
-
-            HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(API_URL))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(request.toString()))
-                    .build();
-
-            HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                log.error("DeepSeek Responses API error: {},req:{}", response.body(), request.toString());
-                throw new RuntimeException("DeepSeek Responses API error: " + response.body());
-            }
-            String body = response.body();
-            return parseResponse(body);
-
+            // 与 Chat Completions 路径一致：瞬时故障指数退避重试，确定性错误立即失败
+            return RetryExecutor.execute(
+                    () -> doCall(messages, tools),
+                    RetryPolicy.fromConfig(),
+                    DeepSeekModel::isRetryable,
+                    "DeepSeek responses call");
         } catch (Exception e) {
             log.error("DeepSeekResponseModel call failed", e);
             throw new RuntimeException("DeepSeekResponseModel call failed", e);
         }
+    }
+
+    /**
+     * 单次实际请求：非 200 抛 {@link ModelApiException} 携带状态码与 Retry-After，供重试器判定
+     */
+    private ResponseModelResp doCall(List<MessageItem> messages, List<Tool> tools) throws Exception {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("model", modelName);
+        request.set("input", convertInput(messages));
+
+        if (tools != null && !tools.isEmpty()) {
+            request.set("tools", convertTools(tools));
+            request.put("tool_choice", "auto");
+        }
+
+        HttpRequest httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL))
+                .timeout(Duration.ofSeconds(ConfigUtil.getInt("model.request.timeoutSeconds", 120)))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(request.toString()))
+                .build();
+
+        HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            log.error("DeepSeek Responses API error: {},req:{}", response.body(), request.toString());
+            throw new ModelApiException(response.statusCode(),
+                    "DeepSeek Responses API error: " + response.body(), DeepSeekModel.parseRetryAfterMs(response));
+        }
+        String body = response.body();
+        return parseResponse(body);
     }
 
     /**

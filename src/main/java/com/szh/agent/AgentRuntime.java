@@ -72,6 +72,8 @@ public class AgentRuntime {
         RunTrace runTrace = new RunTrace(runId, sessionId, System.currentTimeMillis());
         runTrace.setTokenTracker(tokenTracker);
         initToolResultStore(sessionId);
+        // run 级熔断器：检测连续失败 / 重复调用，及时刹车
+        LoopGuard loopGuard = new LoopGuard();
 
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
@@ -128,8 +130,23 @@ public class AgentRuntime {
                 agentState.applyEvent(callToolStartedEvent);
                 String args = toolMessage.getToolArgs();
                 Tool tool = toolRegistry.getToolByCode(toolMessage.getToolCode());
-                String toolRes = tool.execute(new ToolContext(sessionId, runId,
-                        ConfigUtil.get("project.workspace", System.getProperty("user.dir")), args));
+
+                // 工具执行兜底：异常不再让整个 run 崩溃，而是转成错误结果并计入熔断统计
+                String toolRes;
+                boolean threw = false;
+                try {
+                    if (tool == null) {
+                        toolRes = "tool not found: " + toolMessage.getToolCode();
+                    } else {
+                        toolRes = tool.execute(new ToolContext(sessionId, runId,
+                                ConfigUtil.get("project.workspace", System.getProperty("user.dir")), args));
+                    }
+                } catch (Exception e) {
+                    threw = true;
+                    log.error("tool execute failed: {}", toolMessage.getToolCode(), e);
+                    toolRes = "execute failed: " + e.getMessage();
+                }
+                loopGuard.record(toolMessage.getToolCode(), args, toolRes, threw);
 
                 String toolCallId = toolMessage.getToolCallId();
                 // 元工具（inlineResult=true，如 read_tool_result）输出直接内联回传，避免二次落盘导致无限套娃；
@@ -145,6 +162,15 @@ public class AgentRuntime {
                 CallToolFinishedEvent callToolFinishedEvent = new CallToolFinishedEvent(sessionId, runId, turnId, round, toolMsg,
                         toolMessage.getToolCode(), toolRes);
                 agentState.applyEvent(callToolFinishedEvent);
+
+                // 熔断触发：结束本次 run，把原因作为最终结果回传
+                if (loopGuard.isTripped()) {
+                    res = loopGuard.getViolation().getReason();
+                    StepTrace guardTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+                    guardTrace.setTokenUsage(modelResp.getTokenUsage());
+                    runTrace.addStepTrace(guardTrace);
+                    break;
+                }
             }
             StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
             stepTrace.setTokenUsage(modelResp.getTokenUsage());

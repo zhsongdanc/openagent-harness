@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.szh.tool.ShellTool;
 import com.szh.tool.ToolContext;
 import com.szh.tool.ToolDefinition;
+import com.szh.tool.security.PermissionDecision;
+import com.szh.tool.security.ShellSecurity;
 import com.szh.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -65,6 +67,14 @@ public abstract class ShellCommandTool implements ShellTool {
         String cmdline = String.join(" ", command);
         log.info("shell exec: {}", cmdline);
 
+        // 安全闸门：先做权限决策（危险/越界命令可能被拒绝或要求人工确认），再按档位包装进 OS 级沙箱
+        PermissionDecision decision = ShellSecurity.authorize(command, toolContext.getWorkspace());
+        if (!decision.isAllowed()) {
+            log.warn("command blocked by security policy: {} ({})", cmdline, decision.getReason());
+            return getCode() + " 被安全策略拦截：" + decision.getReason();
+        }
+        List<String> execCommand = ShellSecurity.wrap(command, toolContext.getWorkspace());
+
         // 读输出放到独立线程：主线程 waitFor 超时后可直接销毁进程，不会卡在 readLine 上
         ExecutorService reader = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "shell-output-reader-" + getCode());
@@ -73,7 +83,7 @@ public abstract class ShellCommandTool implements ShellTool {
         });
         Process process = null;
         try {
-            ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+            ProcessBuilder builder = new ProcessBuilder(execCommand).redirectErrorStream(true);
             File workspace = resolveWorkspace(toolContext);
             if (workspace != null) {
                 builder.directory(workspace);

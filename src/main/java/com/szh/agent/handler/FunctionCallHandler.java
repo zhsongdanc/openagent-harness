@@ -40,13 +40,24 @@ public class FunctionCallHandler implements OutputItemHandler {
                 functionCall.getName(), functionCall.getArguments()));
 
         String toolRes;
+        boolean threw = false;
         Tool tool = context.getToolRegistry().getToolByCode(functionCall.getName());
         if (tool == null) {
             log.warn("tool not found: {}", functionCall.getName());
             toolRes = "tool not found: " + functionCall.getName();
         } else {
-            toolRes = tool.execute(new ToolContext(
-                    context.getSessionId(), context.getRunId(), context.getWorkspace(), functionCall.getArguments()));
+            // 工具执行兜底：异常不再让整个 run 崩溃，而是转成错误结果并计入熔断统计
+            try {
+                toolRes = tool.execute(new ToolContext(
+                        context.getSessionId(), context.getRunId(), context.getWorkspace(), functionCall.getArguments()));
+            } catch (Exception e) {
+                threw = true;
+                log.error("tool execute failed: {}", functionCall.getName(), e);
+                toolRes = "execute failed: " + e.getMessage();
+            }
+        }
+        if (context.getLoopGuard() != null) {
+            context.getLoopGuard().record(functionCall.getName(), functionCall.getArguments(), toolRes, threw);
         }
 
         // 元工具（inlineResult=true，如 read_tool_result）输出直接内联回传，避免二次落盘导致无限套娃；

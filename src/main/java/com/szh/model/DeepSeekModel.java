@@ -12,12 +12,17 @@ import com.szh.model.dto.ModelResp;
 import com.szh.model.dto.TokenUsage;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolDefinition;
+import com.szh.utils.ConfigUtil;
+import com.szh.utils.RetryExecutor;
+import com.szh.utils.RetryPolicy;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -38,42 +43,78 @@ public class DeepSeekModel implements Model {
     @Override
     public ModelResp call(List<MessageItem> messages, List<Tool> tools){
         try {
-
-            ObjectNode request = mapper.createObjectNode();
-            request.put("model", "deepseek-chat");
-            /*
-             * MessageItem转换成DeepSeek messages
-             */
-            request.set("messages", convertMessages(messages));
-
-            /*
-             * 工具定义
-             */
-            if(tools != null && !tools.isEmpty()){
-                request.set("tools", convertTools(tools));
-                request.put("tool_choice", "auto");
-            }
-
-            HttpRequest httpRequest =
-                    HttpRequest.newBuilder()
-                            .uri(URI.create(API_URL))
-                            .header("Content-Type", "application/json")
-                            .header("Authorization", "Bearer "+apiKey)
-                            .POST(HttpRequest.BodyPublishers.ofString(request.toString()))
-                            .build();
-
-            HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200){
-                log.error("deepseek error: {}", response.body());
-                throw new RuntimeException("deepseek error:" + response.body());
-            }
-            return parseResponse(response.body());
-
-        } catch(Exception e){
+            // 瞬时故障（限流/网关错误/网络抖动）按策略指数退避重试，确定性错误（4xx）立即失败
+            return RetryExecutor.execute(
+                    () -> doCall(messages, tools),
+                    RetryPolicy.fromConfig(),
+                    DeepSeekModel::isRetryable,
+                    "DeepSeek chat call");
+        } catch (Exception e) {
             log.error("DeepSeek call failed", e);
             throw new RuntimeException("DeepSeek call failed", e);
         }
+    }
 
+    /**
+     * 单次实际请求：非 200 抛 {@link ModelApiException} 携带状态码与 Retry-After，供重试器判定
+     */
+    private ModelResp doCall(List<MessageItem> messages, List<Tool> tools) throws Exception {
+        ObjectNode request = mapper.createObjectNode();
+        request.put("model", "deepseek-chat");
+        /*
+         * MessageItem转换成DeepSeek messages
+         */
+        request.set("messages", convertMessages(messages));
+
+        /*
+         * 工具定义
+         */
+        if(tools != null && !tools.isEmpty()){
+            request.set("tools", convertTools(tools));
+            request.put("tool_choice", "auto");
+        }
+
+        HttpRequest httpRequest =
+                HttpRequest.newBuilder()
+                        .uri(URI.create(API_URL))
+                        .timeout(Duration.ofSeconds(ConfigUtil.getInt("model.request.timeoutSeconds", 120)))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer "+apiKey)
+                        .POST(HttpRequest.BodyPublishers.ofString(request.toString()))
+                        .build();
+
+        HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200){
+            log.error("deepseek error: {}", response.body());
+            throw new ModelApiException(response.statusCode(),
+                    "deepseek error:" + response.body(), parseRetryAfterMs(response));
+        }
+        return parseResponse(response.body());
+    }
+
+    /**
+     * 判定异常是否可重试：网络类 IO 异常，或可重试状态码的 API 异常
+     */
+    static boolean isRetryable(Exception e) {
+        if (e instanceof ModelApiException mae) {
+            return mae.isRetryable();
+        }
+        return e instanceof IOException;
+    }
+
+    /**
+     * 解析服务端 Retry-After 响应头（秒）为毫秒，缺失或非法返回 0
+     */
+    static long parseRetryAfterMs(HttpResponse<?> response) {
+        return response.headers().firstValue("Retry-After")
+                .map(v -> {
+                    try {
+                        return (long) (Double.parseDouble(v.trim()) * 1000);
+                    } catch (NumberFormatException e) {
+                        return 0L;
+                    }
+                })
+                .orElse(0L);
     }
 
     /**
