@@ -3,6 +3,9 @@ package com.szh.cli;
 import com.szh.agent.AgentResponseRuntime;
 import com.szh.agent.AgentRuntime;
 import com.szh.agent.AgentState;
+import com.szh.mcp.client.McpClient;
+import com.szh.mcp.client.McpClientManager;
+import com.szh.mcp.client.McpToolInfo;
 import com.szh.model.ModelFactory;
 import com.szh.store.EventStoreFactory;
 import com.szh.store.StoreEnum;
@@ -234,6 +237,7 @@ public class Repl {
                 System.out.flush();
             }
             case "/replay" -> replay(parts);
+            case "/mcp" -> handleMcp(parts);
             default -> System.out.println("未知命令: " + cmd + "（/help 查看可用命令）");
         }
         return false;
@@ -257,6 +261,55 @@ public class Repl {
             Path file = TraceReplay.exportHtml(target);
             System.out.println(file == null ? "HTML 导出失败，详见日志" : "HTML 已导出: " + file);
         }
+    }
+
+    /**
+     * /mcp [子命令]：展示 MCP Server 状态 / 重载 / 列出已注册工具
+     * <ul>
+     *   <li>{@code /mcp}：当前连接与失败概览</li>
+     *   <li>{@code /mcp reload}：关闭全部 Server 重新拉起，并重建 ToolRegistry（新 Server 的工具下一轮即生效）</li>
+     *   <li>{@code /mcp tools}：按 Server 分组列出全部工具 code + 描述，方便确认名字</li>
+     * </ul>
+     */
+    private void handleMcp(String[] parts) {
+        McpClientManager manager = McpClientManager.get();
+        manager.ensureInit();
+        if (parts.length < 2) {
+            System.out.println(manager.statusText());
+            System.out.println("子命令：/mcp reload 重载、/mcp tools 列出已注册工具");
+            return;
+        }
+        String sub = parts[1].toLowerCase();
+        switch (sub) {
+            case "reload" -> {
+                manager.reload();
+                // 重新扫描工具表，新 Server 的工具不需要重启 REPL 就能用
+                toolRegistry.rebuild();
+                System.out.println(manager.statusText());
+            }
+            case "tools" -> {
+                int total = 0;
+                for (McpClient client : manager.getClients()) {
+                    System.out.println("[" + client.getServerName() + "] " + client.getServerInfo());
+                    for (McpToolInfo info : client.getTools()) {
+                        System.out.println("  - " + client.getServerName() + "__" + info.getName()
+                                + (info.getDescription() == null || info.getDescription().isBlank()
+                                ? "" : "  // " + firstLine(info.getDescription())));
+                        total++;
+                    }
+                }
+                System.out.println("共 " + total + " 个 MCP 工具");
+                if (!manager.getFailures().isEmpty()) {
+                    System.out.println("启动失败 Server：" + manager.getFailures().keySet());
+                }
+            }
+            default -> System.out.println("未知子命令：/mcp " + sub + "（可选 reload / tools）");
+        }
+    }
+
+    private static String firstLine(String s) {
+        int idx = s.indexOf('\n');
+        return idx < 0 ? s : s.substring(0, idx);
     }
 
     private void printModel() {
@@ -288,6 +341,7 @@ public class Repl {
                   /session <id>         恢复指定已持久化 session
                   /runtime [chat|response]  查看/切换运行时链路（共享同一 session 上下文）
                   /model                查看当前 provider/model/store/stream 配置
+                  /mcp [reload|tools]   查看 MCP Server 状态 / 重载配置 / 列出 MCP 工具
                   /replay [id] [--html] 回放执行时间线；--html 额外导出可视化文件
                   /clear                清屏
                 其它任意输入都会作为一轮对话发给模型。""");

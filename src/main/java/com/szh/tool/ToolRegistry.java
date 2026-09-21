@@ -1,5 +1,9 @@
 package com.szh.tool;
 
+import com.szh.mcp.client.McpClient;
+import com.szh.mcp.client.McpClientManager;
+import com.szh.mcp.client.McpToolInfo;
+import com.szh.mcp.tool.McpTool;
 import com.szh.memory.LongTermMemory;
 import com.szh.tool.tools.QueryLocationTool;
 import com.szh.tool.tools.QueryWeatherTool;
@@ -39,6 +43,15 @@ public class ToolRegistry {
     private List<Tool> tools;
 
     public ToolRegistry() {
+        rebuild();
+    }
+
+    /**
+     * 重新扫描全部工具源（内置 + MCP），用于会话中 {@code /mcp reload} 后把新 Server 的工具拉进来。
+     * <p>
+     * 旧 tools 列表被新列表原子替换，不影响正在并发读取的调用方（最多看到旧快照，下一轮就新了）。
+     */
+    public synchronized void rebuild() {
         QueryLocationTool locationTool = new QueryLocationTool();
         QueryWeatherTool weatherTool = new QueryWeatherTool();
         ReadToolResultTool readToolResultTool = new ReadToolResultTool();
@@ -63,6 +76,7 @@ public class ToolRegistry {
         allTools.addAll(fileTools());
         allTools.addAll(gitTools());
         allTools.addAll(memoryTools());
+        allTools.addAll(mcpTools());
 
         tools = List.copyOf(allTools);
     }
@@ -100,6 +114,38 @@ public class ToolRegistry {
             return List.of();
         }
         return List.of(new RememberTool(), new RecallTool(), new ForgetTool());
+    }
+
+    /**
+     * MCP 工具：把外部 MCP Server 暴露的 tools 动态注册进来，让 openagent 可以直接吃到整个 MCP 生态
+     * （filesystem / github / slack / postgres / playwright 等）。
+     * <p>
+     * 关键点：
+     * <ol>
+     *   <li>{@link McpClientManager#ensureInit()} 是幂等懒启动，本方法调用时才真正拉起 Server 子进程；</li>
+     *   <li>启动失败/未配置时静默返回空列表，不影响其它工具注册；</li>
+     *   <li>工具 code 加 {@code {server}__} 前缀做命名空间隔离（{@link McpTool}）；</li>
+     *   <li>配置项 {@code mcp.enabled=false} 或 {@code mcp.json} 不存在时整组不注册。</li>
+     * </ol>
+     */
+    private List<Tool> mcpTools() {
+        if (!ConfigUtil.getBoolean("mcp.enabled", true)) {
+            return List.of();
+        }
+        try {
+            McpClientManager manager = McpClientManager.get();
+            manager.ensureInit();
+            List<Tool> result = new ArrayList<>();
+            for (McpClient client : manager.getClients()) {
+                for (McpToolInfo info : client.getTools()) {
+                    result.add(new McpTool(client, info));
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            // MCP 装配失败绝不能拖垮整个工具注册；仅记录，让内置工具照常工作
+            return List.of();
+        }
     }
 
 
