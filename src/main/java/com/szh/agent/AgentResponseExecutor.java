@@ -23,9 +23,11 @@ public class AgentResponseExecutor {
     }
 
     public String runExistsSession(String sessionId, String userInput) {
+        if (!sessionSaved(sessionId)) {
+            throw new IllegalArgumentException("Session not found: " + sessionId);
+        }
         log.info("Resume session: {}", sessionId);
-        AgentState agentState = new AgentState(EventStoreFactory.createEventStore());
-        agentState.resume(sessionId);
+        AgentState agentState = recoverFromStore(sessionId);
         return run(sessionId, userInput, agentState);
     }
 
@@ -38,13 +40,22 @@ public class AgentResponseExecutor {
     }
 
 
+    /**
+     * 会话是否已持久化：委托当前存储引擎的存在性检查
+     */
     public boolean sessionSaved(String sessionId) {
-        // 先MOCK
-        return false;
+        if (sessionId == null || sessionId.isEmpty()) {
+            return false;
+        }
+        return EventStoreFactory.createEventStore().exists(sessionId);
     }
 
-    // TODO 先mock
+    /**
+     * 断点恢复：新建 AgentState 后从事件日志重建上下文
+     */
     public AgentState recoverFromStore(String sessionId) {
-        return new AgentState(EventStoreFactory.createEventStore());
+        AgentState agentState = new AgentState(EventStoreFactory.createEventStore());
+        agentState.resume(sessionId);
+        return agentState;
     }
 }

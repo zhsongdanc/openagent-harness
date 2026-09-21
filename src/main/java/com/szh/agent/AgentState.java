@@ -1,5 +1,6 @@
 package com.szh.agent;
 
+import com.szh.context.InstructionMemoryLoader;
 import com.szh.context.dto.AssistantMessageItem;
 import com.szh.context.dto.MessageItem;
 import com.szh.context.dto.SystemMessageItem;
@@ -22,7 +23,8 @@ import java.util.Objects;
 @Slf4j
 public class AgentState {
 
-    private static final String SYSTEM_PROMPT = "你是一个人工智能助手，请回答用户问题。下面是上下文：";
+    // 分层指令记忆装配出的 system prompt（全局 ~/.openagent/AGENTS.md + 目录链 AGENTS.md，含 @import）
+    private final String systemPrompt;
 
     // 给到大模型的窗口（运行期增量维护；恢复时由 deriveMessages 从事件日志重建）
     private List<MessageItem> modelContext = new ArrayList<>();
@@ -33,7 +35,8 @@ public class AgentState {
 
     public AgentState(EventStore eventStore) {
         this.eventStore = eventStore;
-        modelContext.add(new SystemMessageItem(SYSTEM_PROMPT));
+        this.systemPrompt = InstructionMemoryLoader.loadSystemPrompt();
+        modelContext.add(new SystemMessageItem(systemPrompt));
     }
 
     public List<MessageItem> getModelContext() {
@@ -101,7 +104,7 @@ public class AgentState {
 
     private List<MessageItem> deriveMessages(List<Event> events) {
         List<MessageItem> context = new ArrayList<>();
-        context.add(new SystemMessageItem(SYSTEM_PROMPT));
+        context.add(new SystemMessageItem(systemPrompt));
         for (Event event : events) {
             if (event instanceof MessageEvent messageEvent) {
                 context.add(messageEvent.getMessageItem());

@@ -12,7 +12,8 @@ import java.util.List;
  */
 public class MemoryEventStore implements EventStore{
 
-    private static final List<Event> events = new ArrayList<>();
+    // 进程内、非持久：以实例为作用域，避免 static 共享导致的跨会话/跨测试泄漏
+    private final List<Event> events = new ArrayList<>();
 
     @Override
     public void appendEvent(Event event) {

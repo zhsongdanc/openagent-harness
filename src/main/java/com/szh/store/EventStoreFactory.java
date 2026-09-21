@@ -48,6 +48,7 @@ public class EventStoreFactory {
         return switch (engine) {
             case MEMORY -> new MemoryEventStore();
             case MYSQL -> new MySqlEventStore();
+            case FILE -> new FileEventStore();
         };
     }
 

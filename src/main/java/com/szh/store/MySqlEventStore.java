@@ -1,30 +1,17 @@
 package com.szh.store;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.szh.context.dto.AssistantMessageItem;
-import com.szh.context.dto.ReasoningMessageItem;
-import com.szh.context.dto.ToolMessageItem;
-import com.szh.context.dto.UserMessageItem;
-import com.szh.event.CallToolFinishedEvent;
-import com.szh.event.CallToolStartedEvent;
 import com.szh.event.Event;
-import com.szh.event.EventEnum;
-import com.szh.event.ModelResponseEvent;
-import com.szh.event.ReasoningEvent;
-import com.szh.event.RunCompletedEvent;
-import com.szh.event.RunStartedEvent;
-import com.szh.event.UserMessageEvent;
 import com.szh.store.db.AgentEventPO;
 import com.szh.store.db.AgentEventRepository;
-import com.szh.utils.JsonUtil;
 
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * @author demussong
- * @describe
+ * @describe MySQL 事件存储：把 {@link SerializedEvent} 拆进 agent_event 各列，读取时再还原。
+ * 事件的序列化/反序列化统一委托 {@link EventJsonCodec}，与 {@code FileEventStore} 共用一套逻辑，
+ * 保证不同引擎的断点恢复行为一致。
  * @date 2026/9/1 18:26
  */
 public class MySqlEventStore implements EventStore {
@@ -66,78 +53,38 @@ public class MySqlEventStore implements EventStore {
     }
 
     private AgentEventPO convertToAgentEventPO(Event event) {
+        SerializedEvent se = EventJsonCodec.serialize(event);
         AgentEventPO agentEventPO = new AgentEventPO();
-        agentEventPO.setEventId(buildEventId(event.getId()));
-        agentEventPO.setSessionId(event.getSessionId());
-        agentEventPO.setRunId(event.getRunId());
-        agentEventPO.setTurnId(event.getTurnId());
-        agentEventPO.setRound(event.getRound());
-        agentEventPO.setEventType(event.getType().name());
+        agentEventPO.setEventId(buildEventId(se.eventId()));
+        agentEventPO.setSessionId(se.sessionId());
+        agentEventPO.setRunId(se.runId());
+        agentEventPO.setTurnId(se.turnId());
+        agentEventPO.setRound(se.round());
+        agentEventPO.setEventType(se.eventType());
         agentEventPO.setEventVersion(DEFAULT_EVENT_VERSION);
-        // 每个事件自带完整数据，统一序列化进 payload（不再只认 MessageEvent）
-        agentEventPO.setPayload(writePayload(event));
-        agentEventPO.setEventTime(event.getTimestamp());
+        // payload 列 NOT NULL：无业务数据时写占位 JSON
+        agentEventPO.setPayload(se.payload() == null ? EMPTY_PAYLOAD : se.payload());
+        agentEventPO.setEventTime(se.timestamp());
         agentEventPO.setCtime(java.time.LocalDateTime.now());
 
         return agentEventPO;
     }
 
     private Event convertToEvent(AgentEventPO agentEventPO) {
-        EventEnum eventType = EventEnum.valueOf(agentEventPO.getEventType());
-        String sessionId = agentEventPO.getSessionId();
-        String runId = agentEventPO.getRunId();
-        String turnId = agentEventPO.getTurnId();
-        int round = agentEventPO.getRound() == null ? 0 : agentEventPO.getRound();
-        String payload = readPayload(agentEventPO);
-
-        // 按 eventType 把 payload 反序列化回对应数据，重建完整事件
-        Event event = switch (eventType) {
-            case RUN_STARTED -> new RunStartedEvent(sessionId, runId, turnId, round);
-            case USER_INPUT -> {
-                UserMessageItem user = JsonUtil.parse(payload, UserMessageItem.class);
-                yield new UserMessageEvent(sessionId, runId, turnId, round, user,
-                        user == null ? null : user.getContent());
-            }
-            case CALL_MODEL_FINISHED -> new ModelResponseEvent(sessionId, runId, turnId, round,
-                    JsonUtil.parse(payload, AssistantMessageItem.class));
-            case MODEL_REASONING -> new ReasoningEvent(sessionId, runId, turnId, round,
-                    JsonUtil.parse(payload, ReasoningMessageItem.class));
-            case CALL_TOOL_STARTED -> {
-                Map<String, String> data = parseToolStarted(payload);
-                yield new CallToolStartedEvent(sessionId, runId, turnId, round,
-                        data.get("toolName"), data.get("parameters"));
-            }
-            case CALL_TOOL_FINISHED -> {
-                ToolMessageItem tool = JsonUtil.parse(payload, ToolMessageItem.class);
-                yield new CallToolFinishedEvent(sessionId, runId, turnId, round, tool,
-                        tool == null ? null : tool.getToolCode(),
-                        tool == null ? null : tool.getExecResult());
-            }
-            case RUN_COMPLETED -> new RunCompletedEvent(sessionId, runId, turnId, round,
-                    JsonUtil.parse(payload, String.class));
-        };
-        event.setId(stripEventId(agentEventPO.getEventId()));
-        event.setTimestamp(agentEventPO.getEventTime());
-
-        return event;
-    }
-
-    private Map<String, String> parseToolStarted(String payload) {
-        Map<String, String> data = JsonUtil.parse(payload, new TypeReference<Map<String, String>>() {
-        });
-        return data == null ? Map.of() : data;
+        SerializedEvent se = new SerializedEvent(
+                stripEventId(agentEventPO.getEventId()),
+                agentEventPO.getEventTime() == null ? 0L : agentEventPO.getEventTime(),
+                agentEventPO.getSessionId(),
+                agentEventPO.getRunId(),
+                agentEventPO.getTurnId(),
+                agentEventPO.getRound() == null ? 0 : agentEventPO.getRound(),
+                agentEventPO.getEventType(),
+                readPayload(agentEventPO));
+        return EventJsonCodec.deserialize(se);
     }
 
     /**
-     * 写入侧兜底：payloadData 为空或序列化失败时写占位 JSON，保证 NOT NULL 列始终有值
-     */
-    private String writePayload(Event event) {
-        String json = JsonUtil.toJson(event.payloadData());
-        return json == null || json.isEmpty() ? EMPTY_PAYLOAD : json;
-    }
-
-    /**
-     * 读取侧对称还原：占位值视为“无业务数据”，返回 null 交给各 case 的 null 分支处理
+     * 读取侧对称还原：占位值视为“无业务数据”，返回 null 交给 codec 的 null 分支处理
      */
     private String readPayload(AgentEventPO agentEventPO) {
         String payload = agentEventPO.getPayload();

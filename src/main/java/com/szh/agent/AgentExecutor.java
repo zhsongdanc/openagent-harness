@@ -42,13 +42,22 @@ public class AgentExecutor {
         return res;
     }
 
+    /**
+     * 会话是否已持久化：委托当前存储引擎的存在性检查（FILE/MYSQL 读盘/库，MEMORY 新实例恒为空）
+     */
     public boolean sessionSaved(String sessionId) {
-        // 先MOCK
-        return false;
+        if (sessionId == null || sessionId.isEmpty()) {
+            return false;
+        }
+        return EventStoreFactory.createEventStore().exists(sessionId);
     }
 
-    // TODO 先mock
+    /**
+     * 断点恢复：新建 AgentState 后从事件日志重建上下文（事件流是唯一真相源）
+     */
     public AgentState recoverFromStore(String sessionId) {
-        return new AgentState(EventStoreFactory.createEventStore());
+        AgentState agentState = new AgentState(EventStoreFactory.createEventStore());
+        agentState.resume(sessionId);
+        return agentState;
     }
 }

@@ -8,5 +8,6 @@ package com.szh.store;
 public enum StoreEnum {
     MEMORY,
     MYSQL,
+    FILE,
     ;
 }
