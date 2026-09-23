@@ -108,6 +108,8 @@ public class AgentResponseRuntime {
 
         String res = "";
         int round = 0;
+        // 本 run 是否触发过上下文压缩：供 L4 反思的 on_compaction 策略判定（信息即将被丢弃才沉淀）
+        boolean compactionHappened = false;
         while (true) {
             if (round > maxRound) {
                 break;
@@ -122,6 +124,7 @@ public class AgentResponseRuntime {
             if (compacted.size() != agentState.getModelContext().size()) {
                 log.info("[Round {}] >>> 压缩已执行: 消息数 {} -> {} <<<", round, agentState.getModelContext().size(), compacted.size());
                 agentState.replaceModelContext(compacted);
+                compactionHappened = true;
             }
 
             List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
@@ -184,11 +187,21 @@ public class AgentResponseRuntime {
             res = "unknown error";
         }
         agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, round, res));
-        // L4 长期记忆：run 结束后反思抽取（复用 Responses API 摘要器）
-        LongTermMemory.get().reflectAndStore(sessionId, agentState.getModelContext(), new ResponseModelSummarizer(model));
+        // L4 长期记忆：run 结束后按策略决定是否异步反思抽取（复用 Responses API 摘要器，不再每轮同步蒸馏）
+        LongTermMemory.get().maybeReflectOnRunEnd(sessionId, agentState.getModelContext(),
+                new ResponseModelSummarizer(model), compactionHappened);
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         return res;
+    }
+
+    /**
+     * 会话结束时触发一次 L4 反思（仅 session_end 策略生效），供 REPL 在退出/切换会话前调用。
+     * 复用本运行时的 model 构造摘要器，与 run 内反思走同一套 Responses API 链路。
+     */
+    public void reflectOnSessionEnd(String sessionId) {
+        LongTermMemory.get().maybeReflectOnSessionEnd(sessionId, agentState.getModelContext(),
+                new ResponseModelSummarizer(model));
     }
 
     private String getTurnName(int turnId) {

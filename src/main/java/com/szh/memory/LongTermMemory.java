@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 长期记忆门面（L4）：对运行时暴露一个极简、稳定、绝不抛异常的入口，
@@ -48,6 +51,12 @@ public class LongTermMemory {
     private final int capacityMax;
     /** 存储初始化失败时为 null，所有操作自动变为 no-op */
     private final MemoryStore store;
+    /** 反思触发策略：决定 run/会话结束时是否真的跑 LLM 蒸馏（取代旧的「每轮无条件反思」） */
+    private final ReflectionPolicy reflectionPolicy;
+    /** JVM 退出前等待在途异步反思任务排空的最长秒数 */
+    private final int reflectionShutdownTimeoutSeconds;
+    /** 单线程守护执行器：串行跑异步反思，避免与主对话争抢并发的 LLM 调用；懒创建 */
+    private volatile ExecutorService reflectionExecutor;
 
     private LongTermMemory() {
         this.enabled = ConfigUtil.getBoolean("memory.enabled", true);
@@ -58,6 +67,7 @@ public class LongTermMemory {
         this.dedupThreshold = ConfigUtil.getDouble("memory.dedup.threshold", 0.72);
         this.dedupCandidates = ConfigUtil.getInt("memory.dedup.candidates", 8);
         this.capacityMax = ConfigUtil.getInt("memory.capacity.max", 1000);
+        this.reflectionShutdownTimeoutSeconds = ConfigUtil.getInt("memory.reflection.shutdownTimeoutSeconds", 30);
 
         MemoryStore s = null;
         if (enabled) {
@@ -69,9 +79,14 @@ public class LongTermMemory {
             }
         }
         this.store = s;
-        log.info("LongTermMemory: enabled={}, retrieval={}, reflection={}, dedup={}(th={}), capacity={}, storeReady={}",
-                enabled, retrievalEnabled, reflectionEnabled, dedupEnabled, dedupThreshold,
+        this.reflectionPolicy = new ReflectionPolicy();
+        log.info("LongTermMemory: enabled={}, retrieval={}, reflection={}(trigger={}), dedup={}(th={}), capacity={}, storeReady={}",
+                enabled, retrievalEnabled, reflectionEnabled, reflectionPolicy.getTrigger(), dedupEnabled, dedupThreshold,
                 capacityMax > 0 ? capacityMax : "unlimited", store != null);
+        // 退出前尽量把在途的异步反思落库，避免 --prompt 一次性执行或 REPL 退出时丢失最后一次蒸馏
+        if (reflectionEnabled && store != null) {
+            Runtime.getRuntime().addShutdownHook(new Thread(this::awaitPendingReflection, "ltm-reflection-shutdown"));
+        }
     }
 
     public static LongTermMemory get() {
@@ -328,17 +343,113 @@ public class LongTermMemory {
     // ---------------- 反思抽取 ----------------
 
     /**
-     * run 结束后把本轮对话蒸馏成长期记忆并落库；未开启或无 Summarizer 时直接返回
+     * run 结束时按策略决定是否反思：命中 {@link ReflectionPolicy} 后<b>异步</b>蒸馏落库，
+     * 不阻塞 run 返回路径。取代旧的「每轮同步 reflectAndStore」。
+     *
+     * @param compactionHappened 本 run 是否真的执行了上下文压缩（on_compaction 策略据此判定）
      */
-    public void reflectAndStore(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
-        if (!isActive() || !reflectionEnabled || summarizer == null) {
+    public void maybeReflectOnRunEnd(String sessionId, List<MessageItem> transcript,
+                                     Summarizer summarizer, boolean compactionHappened) {
+        if (!reflectionReady(summarizer)) {
             return;
         }
+        if (!reflectionPolicy.shouldReflectOnRunEnd(sessionId, compactionHappened)) {
+            log.debug("LongTermMemory: reflection skipped by policy (trigger={}, compaction={})",
+                    reflectionPolicy.getTrigger(), compactionHappened);
+            return;
+        }
+        submitReflection(sessionId, transcript, summarizer);
+    }
+
+    /**
+     * 会话结束（REPL 退出 / 切换 session / --prompt 一次性执行完）时触发：仅 session_end 策略生效。
+     * <p>此处<b>同步</b>执行——会话已终止，阻塞等待蒸馏落库才能保证不丢，且无后续对话受影响。
+     */
+    public void maybeReflectOnSessionEnd(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
+        if (!reflectionReady(summarizer) || !reflectionPolicy.shouldReflectOnSessionEnd()) {
+            return;
+        }
+        // 同步快照后直接蒸馏：transcript 传副本，规避调用方随后清空/复用上下文
+        doReflect(sessionId, new ArrayList<>(transcript), summarizer);
+    }
+
+    /**
+     * 立即同步蒸馏并落库（不经策略门控）。保留给测试或需要强制反思的场景；
+     * 运行时主流程请改用 {@link #maybeReflectOnRunEnd} / {@link #maybeReflectOnSessionEnd}。
+     */
+    public void reflectAndStore(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
+        if (!reflectionReady(summarizer)) {
+            return;
+        }
+        doReflect(sessionId, new ArrayList<>(transcript), summarizer);
+    }
+
+    /** 反思是否具备执行条件：记忆可用 + 反思开关开 + 有摘要器 */
+    private boolean reflectionReady(Summarizer summarizer) {
+        return isActive() && reflectionEnabled && summarizer != null;
+    }
+
+    /**
+     * 把反思任务提交到后台单线程执行器。<b>提交时即对 transcript 做快照</b>，
+     * 否则异步任务真正跑起来时，主线程可能已进入下一轮并 replaceModelContext，读到被改动的上下文。
+     */
+    private void submitReflection(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
+        final List<MessageItem> snapshot = new ArrayList<>(transcript);
+        try {
+            ensureExecutor().submit(() -> doReflect(sessionId, snapshot, summarizer));
+        } catch (Throwable t) {
+            // 执行器已关闭（如正在退出）等：降级为 no-op，绝不打断主流程
+            log.warn("LongTermMemory: submit reflection failed, sessionId={} ({})", sessionId, t.toString());
+        }
+    }
+
+    /** 反思本体：蒸馏成长期记忆并落库；任何异常吞掉，绝不外抛 */
+    private void doReflect(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
         try {
             List<Memory> memories = new MemoryExtractor(summarizer).extract(sessionId, transcript);
             rememberAll(memories);
         } catch (Throwable t) {
-            log.error("LongTermMemory: reflectAndStore failed, sessionId={}", sessionId, t);
+            log.error("LongTermMemory: reflect failed, sessionId={}", sessionId, t);
+        }
+    }
+
+    private ExecutorService ensureExecutor() {
+        ExecutorService ex = reflectionExecutor;
+        if (ex == null) {
+            synchronized (this) {
+                ex = reflectionExecutor;
+                if (ex == null) {
+                    ex = Executors.newSingleThreadExecutor(r -> {
+                        Thread t = new Thread(r, "ltm-reflection");
+                        t.setDaemon(true);
+                        return t;
+                    });
+                    reflectionExecutor = ex;
+                }
+            }
+        }
+        return ex;
+    }
+
+    /**
+     * 等待在途异步反思任务排空（JVM shutdown hook 调用）：优雅关闭 + 限时等待，超时则强关。
+     * 幂等：执行器为 null（从未提交过反思）时直接返回。
+     */
+    public void awaitPendingReflection() {
+        ExecutorService ex = reflectionExecutor;
+        if (ex == null) {
+            return;
+        }
+        ex.shutdown();
+        try {
+            if (!ex.awaitTermination(reflectionShutdownTimeoutSeconds, TimeUnit.SECONDS)) {
+                log.warn("LongTermMemory: reflection drain timed out after {}s, forcing shutdown",
+                        reflectionShutdownTimeoutSeconds);
+                ex.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            ex.shutdownNow();
         }
     }
 

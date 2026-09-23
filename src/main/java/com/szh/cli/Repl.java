@@ -101,6 +101,8 @@ public class Repl {
             if (!repl.streamEnabled) {
                 System.out.println(res);
             }
+            // 会话到此结束：触发一次 session_end 反思（若策略开启），再退出
+            repl.reflectOnSessionEnd();
             return;
         }
         repl.start();
@@ -169,6 +171,7 @@ public class Repl {
             if (line == null) {
                 // EOF：交互式 Ctrl-D 或非交互输入耗尽，优雅退出
                 System.out.println("\n(输入结束，退出)");
+                reflectOnSessionEnd();
                 break;
             }
             String trimmed = line.trim();
@@ -199,6 +202,23 @@ public class Repl {
         return mode == Mode.CHAT
                 ? chat().run(sessionId, userInput)
                 : response().run(sessionId, userInput);
+    }
+
+    /**
+     * 会话结束反思：把当前 session 的对话按策略（仅 session_end 生效）蒸馏进 L4 长期记忆。
+     * 只在对应运行时已创建（即真的对话过）时调用；session_end 反思在 LongTermMemory 内同步执行，
+     * 失败不阻断退出/切换。非 session_end 策略下此调用为 no-op。
+     */
+    private void reflectOnSessionEnd() {
+        try {
+            if (mode == Mode.CHAT && chatRuntime != null) {
+                chatRuntime.reflectOnSessionEnd(sessionId);
+            } else if (mode == Mode.RESPONSE && responseRuntime != null) {
+                responseRuntime.reflectOnSessionEnd(sessionId);
+            }
+        } catch (RuntimeException e) {
+            log.warn("session-end reflection failed for {}", sessionId, e);
+        }
     }
 
     /**
@@ -260,16 +280,20 @@ public class Repl {
         String cmd = parts[0].toLowerCase();
         switch (cmd) {
             case "/exit", "/quit" -> {
+                reflectOnSessionEnd();
                 System.out.println("再见。session=" + sessionId);
                 return true;
             }
             case "/help" -> printHelp();
             case "/new" -> {
+                // 先给旧会话一次 session_end 反思，再丢弃上下文开新会话
+                reflectOnSessionEnd();
                 initSession(null);
                 System.out.println("已开启新会话: " + sessionId);
             }
             case "/session" -> {
                 if (parts.length > 1) {
+                    reflectOnSessionEnd();
                     initSession(parts[1]);
                 }
                 System.out.println("当前 session: " + sessionId + " | 存储引擎: " + EventStoreFactory.getStoreEngine());
