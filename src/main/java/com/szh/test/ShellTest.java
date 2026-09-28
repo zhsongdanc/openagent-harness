@@ -24,7 +24,15 @@ public class ShellTest {
     public static void main(String[] args) {
 //        testChatStream();
 //        testShellTool();
-        testCompactionTrigger();
+        testStreamOutput();
+    }
+
+    public static void testStreamOutput() {
+        String userInput = "请查看项目结构，再从各个方面说一下这是个什么项目";
+        com.szh.agent.AgentExecutor agentExecutor = new com.szh.agent.AgentExecutor();
+        String reply = agentExecutor.run(userInput);
+        System.out.println("=== 最终回答 ===");
+        System.out.println(reply);
     }
 
     /**
