@@ -4,9 +4,9 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- 项目坐标，改成你自己的 -->
-    <groupId>com.demo</groupId>
-    <artifactId>jdk21-demo</artifactId>
+    <!-- 项目坐标 -->
+    <groupId>com.szh</groupId>
+    <artifactId>openagent-harness</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <properties>
@@ -99,6 +99,8 @@
     </dependencies>
 
     <build>
+        <!-- 固定产物名，方便启动器脚本引用 target/openagent.jar，不必跟着 version 改 -->
+        <finalName>openagent</finalName>
         <plugins>
             <!-- maven‑compiler‑plugin 明确指定JDK21编译，防止IDE/Maven版本不一致踩坑 -->
             <plugin>
@@ -119,6 +121,54 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+
+            <!-- 打成可执行 uber-jar：把全部依赖与资源合并进单个 target/openagent.jar，
+                 并在 MANIFEST 写入 Main-Class=com.szh.cli.Repl，使 `java -jar` 直接进 REPL。
+                 关键处理：
+                 1) 剔除依赖（如 mysql-connector-j）自带的签名文件 *.SF/*.DSA/*.RSA，
+                    否则合并后签名摘要校验失败，启动报 “Invalid signature file digest”；
+                 2) ServicesResourceTransformer 合并 META-INF/services（JDBC 驱动靠
+                    java.sql.Driver 的 ServiceLoader 发现，MyBatis/Log4j2 也依赖此机制）；
+                 3) Multi-Release=true 保留 JDK 多版本 class（sqlite-jdbc 等含 META-INF/versions）。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <!-- 不生成 dependency-reduced-pom.xml，避免污染项目根目录 -->
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/*.EC</exclude>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.szh.cli.Repl</mainClass>
+                                    <manifestEntries>
+                                        <Multi-Release>true</Multi-Release>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

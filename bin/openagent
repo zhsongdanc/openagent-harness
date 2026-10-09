@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#
+# openagent —— openagent-harness 的命令行启动器。
+#
+# 作用：把 `java -jar target/openagent.jar` 包一层，做到
+#   1) 无论从哪个目录、通过软链还是 PATH 调用，都能定位到本仓库的 jar；
+#   2) 自动挑一个可用的 JDK21（优先 JAVA_HOME，其次本机已知路径，最后 PATH 上的 java）；
+#   3) 把“当前目录”作为工作区传给 agent（-Dproject.workspace），并原样透传其余参数。
+#
+# 用法：
+#   openagent                         进入交互式 REPL
+#   openagent --prompt "帮我看看这个项目"   一次性执行后退出（便于脚本/管道）
+#   openagent --session <id>          恢复历史会话
+#   openagent --runtime chat          指定运行时链路
+# 其余可用参数与内置命令见 REPL 内 /help。
+
+set -euo pipefail
+
+# ---- 1. 解析脚本真实路径（支持被软链到 /usr/local/bin 之类的 PATH 目录）----
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  # 软链目标是相对路径时，拼回其所在目录
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+ROOT_DIR="$(cd -P "$BIN_DIR/.." && pwd)"
+JAR="$ROOT_DIR/target/openagent.jar"
+
+if [ ! -f "$JAR" ]; then
+  echo "[openagent] 未找到可执行 jar: $JAR" >&2
+  echo "[openagent] 请先构建:  (cd '$ROOT_DIR' && mvn -q clean package)" >&2
+  exit 1
+fi
+
+# ---- 2. 选一个 JDK21：JAVA_HOME 优先，其次本机已知路径，最后退回 PATH 上的 java ----
+KNOWN_JDK21="/Users/demus/Library/Java/JavaVirtualMachines/ms-21.0.12.1-1/Contents/Home"
+pick_java() {
+  if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    echo "$JAVA_HOME/bin/java"; return
+  fi
+  if [ -x "$KNOWN_JDK21/bin/java" ]; then
+    echo "$KNOWN_JDK21/bin/java"; return
+  fi
+  if command -v java >/dev/null 2>&1; then
+    command -v java; return
+  fi
+  echo "" 
+}
+JAVA_BIN="$(pick_java)"
+if [ -z "$JAVA_BIN" ]; then
+  echo "[openagent] 未找到可用的 java，请安装 JDK21 或设置 JAVA_HOME。" >&2
+  exit 1
+fi
+
+# ---- 3. 启动：工作区跟随当前目录，其余参数透传给 REPL ----
+# 注意 -D 系统属性必须放在 -jar 之前，否则会被当成程序参数。
+# 额外的 JVM 参数可通过环境变量 OPENAGENT_JAVA_OPTS 注入（如 -Xmx2g）。
+exec "$JAVA_BIN" \
+  ${OPENAGENT_JAVA_OPTS:-} \
+  -Dproject.workspace="$PWD" \
+  -jar "$JAR" \
+  "$@"

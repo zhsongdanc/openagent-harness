@@ -16,7 +16,7 @@ Claude Code 有**两套并行**的记忆机制，加载方式完全不同：
 | **CLAUDE.md** | 开发者手写 | 指令、规范、约束 | 每次会话**全量注入**（子目录的按访问目录时加载） |
 | **Auto Memory** | Claude 自动积累 | 学到的经验、模式、用户纠正 | 每次会话只加载**索引 MEMORY.md**，正文按需召回 |
 
-用户问的 `user / feedback / project / reference` 属于 **Auto Memory** 这一套。下面 1.1～1.5 全部围绕 Auto Memory 展开（存储 → 读取 → 写入 → 更新 → 开关），1.6 补充手写的 CLAUDE.md 层级。
+用户问的 `user / feedback / project / reference` 属于 **Auto Memory** 这一套。下面 1.1～1.5 全部围绕 Auto Memory 展开（存储 → 读取 → 写入 → 更新 → 开关），1.6 补充手写的 CLAUDE.md 层级，1.7 讲记忆之外的底层机制——JSONL 会话 transcript。
 
 ### 1.1 Auto Memory 的四种 type
 
@@ -151,9 +151,54 @@ Auto Memory 之外，手写的 CLAUDE.md 是**全量加载**的。按加载顺�
 - 仓库若用 `AGENTS.md`：默认**仅当没有 CLAUDE.md/CLAUDE.local.md 时**才读 AGENTS.md（可用 `/config` 的 Project instructions 改成两者都读等）。
 - CLAUDE.md 内容是作为 **system prompt 之后的一条 user message** 投递的（不是 system prompt 本身），是"上下文"而非"强制配置"——要硬性拦截得用 PreToolUse hook。
 
-### 1.7 一句话总结
+### 1.7 会话流水账：JSONL transcript（记忆之外的底层机制）
 
-> Auto Memory = **"索引常驻 + 正文按相关性召回"的双层自动记忆**。默认进上下文的只有 `MEMORY.md`（≤200 行/25KB）里每条记忆的一行索引；完整正文靠 `description` 相关性触发**按需 Read**，以 `<system-reminder>` 回灌。写入与更新全由模型自主完成——**判断值得记 → 查重改而非增 → 一条记忆一个带 frontmatter 的文件（自动打 `modified`）→ 同步维护 MEMORY.md 索引 → 超限回压精简**；可从代码/CLAUDE.md 推导的一律不记。
+Auto Memory / CLAUDE.md 都是"跨会话记忆"，而 Claude Code 还有一层**当前会话怎么记住自己说过什么**的机制——每段会话持续写入一份 **JSONL transcript**（会话转录），对应四层记忆模型的 L2 会话记忆。它不是记忆系统的一部分，但 `--continue`/`--resume`/`/rewind` 全靠它。
+
+**① 存哪、长什么样**
+
+- 路径：`~/.claude/projects/<project>/<session-id>.jsonl`。`<project>` 由工作目录路径把非字母数字字符替换成连字符得到（如在 `/home/deploy/apps/api` 启动 → 目录名 `-home-deploy-apps-api`；超 200 字符则截断并追加路径哈希）。与 1.2 的 memory 目录同在 `projects/<project>/` 下，但**一个是流水账、一个是提炼后的记忆文件**。
+- JSONL = JSON Lines，**每行一条独立 JSON 记录**，会话运行中不断向文件末尾追加，像一本"按行写的流水账"：发生一笔记一笔，从不回头涂改。
+- 另有配套的 `summary`（LLM 生成的会话摘要，供启动时列会话当"标题"）、`~/.claude/history.jsonl`（全局会话汇总，新版本）。
+
+**② 为什么选 JSONL（原理）**
+
+| 特性 | 原理 |
+|------|------|
+| **追加写** | 新事件只需 `append` 一行，不用重写整个文件——O(1) 写入，长会话也不卡 |
+| **流式读** | 恢复时逐行读、逐行解析、逐行回放，不必把整个文件载入内存 |
+| **崩溃安全** | 进程崩溃/断电时已写入的行完好，最多丢最后一行半截记录 |
+| **可观测** | 纯文本，`cat session.jsonl \| jq` 直接看历史，无需专用工具 |
+
+这套性质正是**事件溯源（event sourcing）**的落盘形态：日志是唯一真相源，状态靠回放重建。
+
+**③ 每行记什么：type 字段决定记录身份**
+
+- `user` / `assistant`：对话消息，内部还有 `message.role` 与 `message.content`。注意**顶层 `type: "user"` 不一定是人打的字**——content 里是 `text` 才是用户消息，是 `tool_result` 就是工具返回给模型的结果。
+- `system`：运行时控制记录，按 `subtype` 恢复对应会话控制状态。
+- 元数据类：`summary`（列表摘要）、`custom-title`、`tag`、`agent-name`/`agent-setting`（agent 配置）、`mode`（运行模式）、`worktree-state`（worktree 路径/分支）、`file-history-snapshot`（文件备份索引，供 `/rewind` 恢复文件内容）、`pr-link` 等——它们不参与对话回放，用于恢复"项目现场"。
+
+**④ 消息链靠 uuid/parentUuid，不靠行序**
+
+- 每条记录带 `uuid`（自己）与 `parentUuid`（逻辑上一条），恢复时沿链重建 `messageList`。`parentUuid` 指向的**不一定是文件里紧邻的上一行**——用户 `/rewind` 回到早先消息再重新输入时，就从同一父节点分出第二条路线（fork）。
+- 一次工具调用通常形成**四条记录**：用户提问 → 模型发起 `tool_use`（assistant）→ 工具以 `tool_result` 返回（顶层 type 是 **user**）→ 模型继续作答。界面上看着是模型"连续"完成调用和结论，JSONL 里中间隔着一条保存工具结果的 user 记录。
+
+**⑤ 恢复是两步，不是"重读一遍日志"**
+
+`claude --continue`（当前项目最近会话）/ `--resume <id>`（指定会话，不带参数弹选择器）/ `/resume`（进程内切换）入口不同，后续逻辑一致：
+
+1. 读 JSONL，沿 `parentUuid` 链把可恢复的对话记录整理进内存 `messageList`，并按各元数据 type 恢复 agent 配置、worktree 等工作状态——**重建一个可以继续操作的会话**；
+2. 等你输入新消息后，才**整理下一次发给模型的上下文**。
+
+**⑥ 注意边界**
+
+- **隐私**：transcript 明文记录一切——读过的文件内容、命令输出都在里面（读过 `.env`，其内容就躺在你家目录的 JSONL 里）。分享/上传前须留意。
+- **清理**：受 `settings.json` 的 `cleanupPeriodDays` 控制（默认 30 天）——与 1.2 对照：**记忆目录被排除在清理之外，transcript 不是**。
+- **内部格式**：条目格式是 Claude Code 的内部细节、随版本变化，官方不建议第三方脚本直接解析（导出用 `/export`）。
+
+### 1.8 一句话总结
+
+> Auto Memory = **"索引常驻 + 正文按相关性召回"的双层自动记忆**。默认进上下文的只有 `MEMORY.md`（≤200 行/25KB）里每条记忆的一行索引；完整正文靠 `description` 相关性触发**按需 Read**，以 `<system-reminder>` 回灌。写入与更新全由模型自主完成——**判断值得记 → 查重改而非增 → 一条记忆一个带 frontmatter 的文件（自动打 `modified`）→ 同步维护 MEMORY.md 索引 → 超限回压精简**；可从代码/CLAUDE.md 推导的一律不记。会话层则由 **JSONL transcript**（`~/.claude/projects/<project>/<session-id>.jsonl`）承载：每行一条事件、追加写、uuid/parentUuid 连链，`--continue`/`--resume`/`/rewind` 全靠回放它重建现场——日志是真相源，记忆是提炼物。
 
 ---
 
@@ -724,12 +769,28 @@ Chronicle 是 Codex 区别于 Claude Code / opencode 的特色能力——普通
 
 ### 3.4 会话持久化 + compaction（L1/L2 工作记忆与会话记忆）
 
-除了上面三套"跨会话记忆"，Codex 还有一层"当前会话怎么记住自己说过什么"的机制，对应四层记忆模型的 L1/L2：
+除了上面三套"跨会话记忆"，Codex 还有一层"当前会话怎么记住自己说过什么"的机制，对应四层记忆模型的 L1/L2。它和 Claude Code 的 transcript（1.7）异曲同工，**同样选择了 JSONL 作为落盘格式**：
 
-- **Rollout 落盘**：Codex 放弃 server-side state（为支持 ZDR 客户），每次请求需自包含完整历史，故把**完整对话历史（含所有 tool call 与结果）**以 JSONL 追加落盘到 `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`（文件名末尾 UUID 即 session id）；另有 `~/.codex/history.jsonl`、`session_index.jsonl` / `state_5.sqlite` 做索引，归档会话移到 `~/.codex/archived_sessions/`。
-- **恢复 / fork**：`codex resume --last` / `codex resume <id>` 从 rollout 重建上下文；`codex fork --last` 派生到新线程；`codex exec --ephemeral` 则不落盘。
-- **Compaction（L1 压缩）**：上下文超阈值时调用一个特殊 Responses API endpoint，生成更小的代表版本替换原历史——技术上不是简单 summary，而是**加密的 latent state payload**。
-- **硬约束**：AGENTS.md 里明确要求"注入模型上下文的一切必须有界、有硬上限，单项不超过 10K tokens"，防止记忆污染。
+**① Rollout 落盘：为什么必须落、为什么是 JSONL**
+
+- **为什么必须落盘**：Codex 放弃 server-side state（为支持 ZDR 零数据保留客户），每次请求需自包含完整历史——本地 rollout 文件就是这份历史的唯一真相源。
+- **存哪**：完整对话历史（含所有 tool call 与结果）追加写入 `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`（按日期分目录，文件名末尾 UUID 即 session id）；另有 `~/.codex/history.jsonl`（输入历史）、`session_index.jsonl` / `state_5.sqlite` 做索引，归档会话移到 `~/.codex/archived_sessions/`。
+- **为什么是 JSONL**（与 Claude Code transcript 同一套原理）：每行一条独立 JSON 记录，新事件只需 **append 一行**不重写全文件；恢复时**逐行流式读**回放；进程崩溃时已写入的行完好（**崩溃安全**）；纯文本可直接 `jq` 审计。本质也是**事件溯源**：状态不落盘，靠回放日志重建。
+- **与 Claude Code 的差异**：Codex 用 `session_index.jsonl` / `state_5.sqlite` 另建**索引层**加速检索（Claude Code 靠目录扫描 + summary 文件）；Codex 提供 `codex exec --ephemeral` 显式**不落盘**模式。
+
+**② 恢复 / fork**
+
+`codex resume --last` / `codex resume <id>` 从 rollout 逐行回放重建上下文；`codex fork --last` 派生到新线程（新开一份 rollout，不动原文件——追加写格式天然支持分叉）。
+
+**③ Compaction（L1 压缩）**
+
+上下文超阈值时调用一个特殊 Responses API endpoint，生成更小的代表版本替换原历史——技术上不是简单 summary，而是**加密的 latent state payload**。压缩产物同样追加进 rollout（历史不删，只追加"新的代表版本"，保持 append-only 语义）。
+
+**④ 硬约束**
+
+AGENTS.md 里明确要求"注入模型上下文的一切必须有界、有硬上限，单项不超过 10K tokens"，防止记忆污染。
+
+> **对照小结（JSONL 会话日志）**：两家都选了 JSONL + append-only + 回放重建，因为 agent 会话天然是"高频追加、从不回改、崩溃不能丢"的事件流；差异在**链结构**——Claude Code 每行带 `uuid/parentUuid` 支持 rewind/fork 分叉，Codex 按日期目录组织 + 独立索引层；而 opencode 本体走的是另一套（SDK 存储 + 插件自建），不在此列。
 
 ### 3.5 一句话总结
 
@@ -755,6 +816,7 @@ Chronicle 是 Codex 区别于 Claude Code / opencode 的特色能力——普通
 | 开关 | `autoMemoryEnabled` / `CLAUDE_CODE_DISABLE_AUTO_MEMORY` / `autoMemoryDirectory` | `OPENCODE_DISABLE_CLAUDE_CODE*` 三个兼容开关 | `[features] memories`（默认 false，EEA/UK/瑞士不可用）+ `[memories]` 段旋钮 + `/memories` 会话级 |
 | 扩展方式 | 分类文件 + `[[link]]` 关联 + `@path` 导入 + `.claude/rules` path-scoped | `opencode.json` 的 `instructions`（本地路径 / GLOB / `~/` / URL，URL 5s 超时）+ AGENTS.md 内写 `@file` 引导模型自己 read | AGENTS.md `project_doc_fallback_filenames` 备用名 + Skills + Chronicle（屏幕）+ MCP（`disable_on_external_context` 挡记忆） |
 | 动态长期记忆 | 内建（Auto Memory，默认开） | 本体无，须外挂 MCP / 插件（如 opencode-supermemory，存云端 hybrid 语义库） | 内建（Memories，**默认关**、本地明文、后台异步）；Chronicle 屏幕喂记忆（实验性） |
+| 会话 JSONL 日志（L2） | **transcript**：`~/.claude/projects/<project>/<session-id>.jsonl`，每行一条记录（type 字段区分 user/assistant/system/元数据），`uuid/parentUuid` 连链支持 rewind/fork；`--continue`/`--resume` 回放重建；受 `cleanupPeriodDays` 清理 | 本体不用 JSONL 存会话（SDK 存储 + 插件自建；跨会话积累全在云端插件侧） | **rollout**：`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 追加全量历史（ZDR 无服务端态，本地即真相源），另建 `session_index.jsonl`/`state_5.sqlite` 索引层；`resume`/`fork` 回放；`--ephemeral` 不落盘 |
 
 **核心差异**：
 - Claude Code = **"索引常驻 + 正文按相关性召回"的双层自动记忆**，默认开、可依赖、鼓励手工读改删，模型自己写、自己维护索引、自己查重更新（`modified` 时间戳 + MEMORY.md 回压），是一套完整的"存/读/写/更新/遗忘"闭环。
@@ -764,4 +826,5 @@ Chronicle 是 Codex 区别于 Claude Code / opencode 的特色能力——普通
 **三者一句话对照**：
 - **默认开关**：Claude Code 自动记忆默认**开**；opencode 本体**无**自动记忆；Codex Memories 默认**关**（且有地区红线）。
 - **指令文件重读时机**：opencode **每个 LLM step** 重读；Codex **每次运行/会话启动**读一次；Claude Code CLAUDE.md 启动全量注入 + 子目录按需。
+- **会话日志落盘**：Claude Code（transcript）与 Codex（rollout）**不约而同选了 JSONL**——追加写 O(1)、流式回放、崩溃安全、`jq` 可审计，本质都是事件溯源（日志是唯一真相源，状态靠回放重建）；差异只在链结构与索引层。opencode 本体不走这条路。
 - **可靠性定位**：Claude Code 把 Auto Memory 当可依赖的一等能力；Codex 明确 Memories 只是"概率性辅助回忆层"，死规矩必须落 AGENTS.md；opencode 干脆不做本体记忆。
