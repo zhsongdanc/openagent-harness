@@ -16,6 +16,7 @@ import com.szh.event.RunStartedEvent;
 import com.szh.event.TodoUpdatedEvent;
 import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.UserMessageEvent;
+import com.szh.event.VerificationEvent;
 import com.szh.tool.tools.meta.TodoItem;
 import com.szh.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -92,6 +93,7 @@ public final class EventJsonCodec {
                     parseTodos(payload));
             case MODE_SWITCHED -> new ModeSwitchedEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
                     JsonUtil.parse(payload, String.class));
+            case VERIFICATION -> parseVerification(s, payload);
         };
         event.setId(s.eventId());
         event.setTimestamp(s.timestamp());
@@ -102,6 +104,24 @@ public final class EventJsonCodec {
         Map<String, String> data = JsonUtil.parse(payload, new TypeReference<Map<String, String>>() {
         });
         return data == null ? Map.of() : data;
+    }
+
+    /**
+     * 验证事件负载反序列化：payload 是 {@code {passed, command, exitCode, detail}} 的 Map；空/非法时安全兜底
+     */
+    private static Event parseVerification(SerializedEvent s, String payload) {
+        Map<String, Object> data = JsonUtil.parse(payload, new TypeReference<Map<String, Object>>() {
+        });
+        if (data == null) {
+            data = Map.of();
+        }
+        boolean passed = Boolean.TRUE.equals(data.get("passed"));
+        Object cmd = data.get("command");
+        Object detail = data.get("detail");
+        int exitCode = data.get("exitCode") instanceof Number n ? n.intValue() : 0;
+        return new VerificationEvent(s.sessionId(), s.runId(), s.turnId(), s.round(), passed,
+                cmd == null ? null : String.valueOf(cmd), exitCode,
+                detail == null ? null : String.valueOf(detail));
     }
 
     /**

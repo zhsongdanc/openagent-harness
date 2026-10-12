@@ -15,6 +15,7 @@ import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
 import com.szh.event.TodoUpdatedEvent;
 import com.szh.event.UserMessageEvent;
+import com.szh.event.VerificationEvent;
 import com.szh.model.dto.ToolCall;
 import com.szh.store.EventStoreFactory;
 import com.szh.tool.tools.meta.TodoItem;
@@ -143,6 +144,13 @@ public final class TraceReplay {
                 ModeSwitchedEvent m = (ModeSwitchedEvent) e;
                 yield "[MODE] → " + nvl(m.getMode());
             }
+            case VERIFICATION -> {
+                VerificationEvent v = (VerificationEvent) e;
+                yield v.isPassed()
+                        ? "[VERIFY ✓] 验证通过"
+                        : "[VERIFY ✗] " + nvl(v.getCommand()) + "  → "
+                            + clip(v.getDetail() != null ? v.getDetail() : ("exitCode=" + v.getExitCode()));
+            }
         };
     }
 
@@ -239,6 +247,7 @@ public final class TraceReplay {
                 .append(".TOOLSTART .tag{color:#ffb454;}.TOOLDONE .tag{color:#8ee06a;}")
                 .append(".DONE .tag{color:#ff6b81;}.RUNSTART .tag{color:#8b93a7;}")
                 .append(".TODO .tag{color:#ffd479;}.MODE .tag{color:#79e0ff;}")
+                .append(".VERIFY .tag{color:#ff9f43;}")
                 .append("details>summary{cursor:pointer;color:#8b93a7;}")
                 .append("</style></head><body>");
         sb.append("<header><h1>Trace Replay</h1><div class=\"meta\">session=")
@@ -340,6 +349,15 @@ public final class TraceReplay {
                 cls = "MODE";
                 tag = "MODE";
                 body = nvl(m.getMode());
+            }
+            case VERIFICATION -> {
+                VerificationEvent v = (VerificationEvent) e;
+                cls = "VERIFY";
+                tag = v.isPassed() ? "VERIFY ✓" : "VERIFY ✗";
+                body = v.isPassed()
+                        ? "验证通过"
+                        : nvl(v.getCommand()) + "\n"
+                            + (v.getDetail() != null ? v.getDetail() : ("exitCode=" + v.getExitCode()));
             }
             default -> {
                 cls = "RUNSTART";

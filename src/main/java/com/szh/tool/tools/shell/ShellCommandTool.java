@@ -10,16 +10,9 @@ import com.szh.tool.security.ShellSecurity;
 import com.szh.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -41,11 +34,6 @@ public abstract class ShellCommandTool implements ShellTool {
      * 单条命令最长执行时间（秒）
      */
     private static final long TIMEOUT_SECONDS = 60;
-
-    /**
-     * 进程退出后等待输出读完的时间（秒）
-     */
-    private static final long DRAIN_SECONDS = 5;
 
     @Override
     public String execute(ToolContext toolContext) {
@@ -76,55 +64,27 @@ public abstract class ShellCommandTool implements ShellTool {
         }
         List<String> execCommand = ShellSecurity.wrap(command, toolContext.getWorkspace());
 
-        // 读输出放到独立线程：主线程 waitFor 超时后可直接销毁进程，不会卡在 readLine 上
-        ExecutorService reader = Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "shell-output-reader-" + getCode());
-            thread.setDaemon(true);
-            return thread;
-        });
-        Process process = null;
-        try {
-            ProcessBuilder builder = new ProcessBuilder(execCommand).redirectErrorStream(true);
-            File workspace = resolveWorkspace(toolContext);
-            if (workspace != null) {
-                builder.directory(workspace);
-            }
-            // 子类可注入额外环境变量：如 git commit 用 GIT_EDITOR=true 关掉编辑器，避免非交互场景阻塞超时
-            Map<String, String> extraEnv = environment();
-            if (extraEnv != null && !extraEnv.isEmpty()) {
-                builder.environment().putAll(extraEnv);
-            }
-
-            Process started = builder.start();
-            process = started;
-            Future<String> output = reader.submit(() -> readOutput(started));
-
-            if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                return getCode() + " 执行超时（" + TIMEOUT_SECONDS + "s）已中断：" + cmdline;
-            }
-
-            String raw = output.get(DRAIN_SECONDS, TimeUnit.SECONDS);
-            int exitCode = process.exitValue();
-            log.info("shell done: cmd={}, exitCode={}, outputLength={}", cmdline, exitCode, raw.length());
-
-            // 完整输出存入文件，不再截断；模型通过 read_tool_result 分页查阅
-            if (raw.isBlank()) {
-                return exitCode == 0
-                        ? getCode() + " 执行完成，无输出"
-                        : getCode() + " 执行完成，无输出，exitCode=" + exitCode;
-            }
-            return exitCode == 0 ? raw : raw + "\nexitCode=" + exitCode;
-
-        } catch (Exception e) {
-            log.error("execute command failed, cmd={}", cmdline, e);
-            return "execute failed: " + e.getMessage();
-        } finally {
-            reader.shutdownNow();
-            if (process != null && process.isAlive()) {
-                process.destroyForcibly();
-            }
+        // 子进程执行（起进程/独立线程读输出/超时销毁）统一交给 ShellRunner，本类只负责安全闸门与结果格式化
+        ShellRunner.ShellResult result = ShellRunner.run(execCommand, resolveWorkspace(toolContext),
+                environment(), TIMEOUT_SECONDS);
+        if (result.error() != null) {
+            return "execute failed: " + result.error();
         }
+        if (result.timedOut()) {
+            return getCode() + " 执行超时（" + TIMEOUT_SECONDS + "s）已中断：" + cmdline;
+        }
+
+        String raw = result.output();
+        int exitCode = result.exitCode();
+        log.info("shell done: cmd={}, exitCode={}, outputLength={}", cmdline, exitCode, raw.length());
+
+        // 完整输出存入文件，不再截断；模型通过 read_tool_result 分页查阅
+        if (raw.isBlank()) {
+            return exitCode == 0
+                    ? getCode() + " 执行完成，无输出"
+                    : getCode() + " 执行完成，无输出，exitCode=" + exitCode;
+        }
+        return exitCode == 0 ? raw : raw + "\nexitCode=" + exitCode;
     }
 
     /**
@@ -139,22 +99,6 @@ public abstract class ShellCommandTool implements ShellTool {
      */
     protected Map<String, String> environment() {
         return Map.of();
-    }
-
-    protected String readOutput(Process process) throws Exception {
-
-        StringBuilder sb = new StringBuilder();
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append("\n");
-            }
-        }
-
-        return sb.toString();
     }
 
     /**

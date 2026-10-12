@@ -1,6 +1,7 @@
 package com.szh.mcp.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.szh.utils.CommonUtils;
 import com.szh.utils.ConfigUtil;
 import com.szh.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -139,42 +140,11 @@ public final class McpConfigLoader {
     }
 
     /**
-     * 展开路径中的 ~ 与环境变量 ${VAR}；null 直接返回
+     * 展开路径中的 ~ 与环境变量 ${VAR}；null 直接返回。
+     * 实现委托 {@link CommonUtils#expand(String)}，与验证闭环配置加载共用同一套展开语义。
      */
     static String expand(String s) {
-        if (s == null) {
-            return null;
-        }
-        String out = s;
-        if (out.startsWith("~/")) {
-            out = System.getProperty("user.home") + out.substring(1);
-        } else if (out.equals("~")) {
-            out = System.getProperty("user.home");
-        }
-        // ${VAR} 替换：让共享的 mcp.json 不必硬编码 secret
-        if (out.contains("${")) {
-            StringBuilder sb = new StringBuilder();
-            int i = 0;
-            while (i < out.length()) {
-                int start = out.indexOf("${", i);
-                if (start < 0) {
-                    sb.append(out, i, out.length());
-                    break;
-                }
-                int end = out.indexOf('}', start + 2);
-                if (end < 0) {
-                    sb.append(out, i, out.length());
-                    break;
-                }
-                sb.append(out, i, start);
-                String varName = out.substring(start + 2, end);
-                String varVal = System.getenv(varName);
-                sb.append(varVal == null ? "" : varVal);
-                i = end + 1;
-            }
-            out = sb.toString();
-        }
-        return out;
+        return CommonUtils.expand(s);
     }
 
     private static String expandHome(String p) {

@@ -1,5 +1,8 @@
 package com.szh.agent;
 
+import com.szh.agent.verify.VerifyGate;
+import com.szh.agent.verify.VerifyPolicy;
+import com.szh.agent.verify.VerifyResult;
 import com.szh.context.ContextBuilder;
 import com.szh.context.compaction.ContextCompactionManager;
 import com.szh.context.compaction.ModelSummarizer;
@@ -88,6 +91,9 @@ public class AgentRuntime {
         initToolResultStore(sessionId);
         // run 级熔断器：检测连续失败 / 重复调用，及时刹车
         LoopGuard loopGuard = new LoopGuard();
+        // run 级验证闸门：改过代码后模型宣布完成时强制跑编译/测试，不通过则回灌失败逼其重修
+        String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        VerifyGate verifyGate = new VerifyGate(workspace);
 
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
@@ -125,6 +131,8 @@ public class AgentRuntime {
             LongTermMemory.get().injectRecall(callContext, userInput);
             // PLAN 模式：往 system prompt 追加规划契约，并把工具收敛为只读子集（会话级模式，每轮读取）
             PlanModePolicy.decorateContext(callContext, sessionId);
+            // 验证闭环软提示：闸门武装时往 system prompt 追加「收尾前自查」契约（只改副本）
+            VerifyPolicy.decorateContext(callContext, verifyGate.isArmed());
             List<Tool> effectiveTools = PlanModePolicy.effectiveTools(toolRegistry.getTools(), sessionId);
             // 流式输出：增量 token 实时打到控制台，长回答不再阻塞等待（model.stream.enabled 可关）
             StreamListener streamListener = ConfigUtil.getBoolean("model.stream.enabled", true)
@@ -139,6 +147,35 @@ public class AgentRuntime {
             agentState.applyEvent(modelResponseEvent);
 
             if (modelResp.getAction() == ActionEnum.FINAL_ANSWER) {
+                // 验证闸门：模型宣布完成，若本 run 改过代码则强制跑验证命令，不通过不许直接收尾
+                if (verifyGate.shouldVerify()) {
+                    VerifyResult vr = verifyGate.runVerification();
+                    agentState.applyEvent(new VerificationEvent(sessionId, runId, turnId, round,
+                            vr.passed(), vr.failedCommand(), vr.exitCode(), vr.note()));
+                    if (!vr.passed() && verifyGate.canRetry()) {
+                        // 未通过且还能重修：把失败输出作为 user 消息回灌，进入下一轮逼模型修复
+                        verifyGate.incrementRound();
+                        String feedback = vr.feedback(verifyGate.round(), verifyGate.maxFixRounds());
+                        log.warn("[Round {}] 验证未通过，回灌失败输出逼模型重修（第 {}/{} 次）",
+                                round, verifyGate.round(), verifyGate.maxFixRounds());
+                        agentState.applyEvent(new UserMessageEvent(sessionId, runId, turnId, round,
+                                new UserMessageItem(feedback), feedback));
+                        StepTrace verifyTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+                        verifyTrace.setTokenUsage(modelResp.getTokenUsage());
+                        runTrace.addStepTrace(verifyTrace);
+                        continue;
+                    }
+                    if (!vr.passed()) {
+                        // 修复轮次耗尽：带「验证未通过」说明收尾，让用户明确知道未通过，而非静默成功
+                        res = "验证未通过（已尝试 " + verifyGate.round() + " 次修复）：\n" + vr.summary()
+                                + "\n\n模型最后的答复：\n" + modelResp.getMessage().getContent();
+                        StepTrace verifyTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+                        verifyTrace.setTokenUsage(modelResp.getTokenUsage());
+                        runTrace.addStepTrace(verifyTrace);
+                        break;
+                    }
+                    log.info("[Round {}] 验证通过，放行收尾", round);
+                }
                 res =  modelResp.getMessage().getContent();
 
                 StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
@@ -152,9 +189,11 @@ public class AgentRuntime {
                 // 一轮可能包含多个并行工具调用：事件按「全部 started → 并发执行 → 全部 finished」
                 // 有序落库，执行本体交给 ParallelToolExecutor（含工具查找/异常兜底/熔断统计/落盘呈现）
                 List<ToolCall> calls = toolMessage.effectiveToolCalls();
+                // 标记本 run 是否改过代码：命中写入类工具即置 dirty，供验证闸门 onlyWhenDirty 判定
+                calls.forEach(c -> verifyGate.markDirty(c.toolCode()));
                 ParallelToolExecutor.executeBatch(calls, new ParallelToolExecutor.ExecutionEnv(
                         agentState, toolRegistry, sessionId, runId, turnId, round,
-                        ConfigUtil.get("project.workspace", System.getProperty("user.dir")),
+                        workspace,
                         toolResultStore, loopGuard));
 
                 // 熔断触发：结束本次 run，把原因作为最终结果回传

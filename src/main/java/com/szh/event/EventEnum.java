@@ -14,6 +14,7 @@ public enum EventEnum {
     CALL_TOOL_FINISHED,
     TODO_UPDATED,
     MODE_SWITCHED,
+    VERIFICATION,
     RUN_COMPLETED,
     ;
 }

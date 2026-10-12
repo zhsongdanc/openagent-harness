@@ -3,6 +3,10 @@ package com.szh.cli;
 import com.szh.agent.AgentResponseRuntime;
 import com.szh.agent.AgentRuntime;
 import com.szh.agent.AgentState;
+import com.szh.agent.verify.VerifyConfig;
+import com.szh.agent.verify.VerifyConfigLoader;
+import com.szh.agent.verify.VerifyResult;
+import com.szh.agent.verify.Verifier;
 import com.szh.event.Event;
 import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.TodoUpdatedEvent;
@@ -324,6 +328,7 @@ public class Repl {
             }
             case "/replay" -> replay(parts);
             case "/mcp" -> handleMcp(parts);
+            case "/verify" -> handleVerify();
             default -> System.out.println("未知命令: " + cmd + "（/help 查看可用命令）");
         }
         return false;
@@ -398,6 +403,33 @@ public class Repl {
         return idx < 0 ? s : s.substring(0, idx);
     }
 
+    /**
+     * /verify：即时对当前工作区跑一遍验证命令并打印结果，不依赖模型。
+     * 未启用/未配置命令时给出提示，方便用户确认闸门是否武装。
+     */
+    private void handleVerify() {
+        String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        VerifyConfig cfg = VerifyConfigLoader.load(workspace);
+        if (!cfg.isEnabled() || cfg.getCommands().isEmpty()) {
+            System.out.println("验证闭环未启用或未配置命令（在 " + workspace
+                    + "/.openagent/verify.json 声明 commands 并置 enabled=true）");
+            return;
+        }
+        System.out.println("运行验证命令: " + cfg.getCommands());
+        VerifyResult r = Verifier.verify(cfg, workspace);
+        System.out.println(r.passed() ? "✓ 验证通过" : "✗ " + r.summary());
+    }
+
+    /**
+     * 验证闸门武装状态文本：供 banner 与 /model 展示，让用户一眼看到闭环是否生效
+     */
+    private String verifyStatusText() {
+        String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        VerifyConfig cfg = VerifyConfigLoader.load(workspace);
+        boolean armed = cfg.isEnabled() && !cfg.getCommands().isEmpty();
+        return armed ? "on(" + cfg.getCommands().size() + " 命令)" : "off";
+    }
+
     private void printModel() {
         StoreEnum engine = EventStoreFactory.getStoreEngine();
         System.out.println("provider=" + ConfigUtil.get("model.provider", "deepseek")
@@ -405,7 +437,8 @@ public class Repl {
                 + " | response.provider=" + ConfigUtil.get("model.response.provider", "(跟随 provider)")
                 + " | response.model=" + ConfigUtil.get("model.response.name", "(默认)")
                 + " | store=" + engine
-                + " | stream=" + streamEnabled);
+                + " | stream=" + streamEnabled
+                + " | verify=" + verifyStatusText());
     }
 
     private void printBanner() {
@@ -414,6 +447,7 @@ public class Repl {
         System.out.println(" session : " + sessionId);
         System.out.println(" runtime : " + mode + "   store: " + EventStoreFactory.getStoreEngine());
         System.out.println(" mode    : " + AgentModeStore.get().get(sessionId));
+        System.out.println(" verify  : " + verifyStatusText());
         System.out.println(" 输入自然语言对话，/help 查看命令，/exit 退出");
         System.out.println("======================================================");
     }
@@ -431,6 +465,7 @@ public class Repl {
                   /todo                 查看当前待办清单（agent 用 todo_write 维护）
                   /mode [plan|normal]   查看/切换运行模式（plan=只读规划，normal=全部工具）
                   /mcp [reload|tools]   查看 MCP Server 状态 / 重载配置 / 列出 MCP 工具
+                  /verify               即时跑一遍项目验证命令（编译/测试）并打印结果
                   /replay [id] [--html] 回放执行时间线；--html 额外导出可视化文件
                   /clear                清屏
                 其它任意输入都会作为一轮对话发给模型。""");
