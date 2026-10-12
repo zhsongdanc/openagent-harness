@@ -133,6 +133,8 @@ public class AgentRuntime {
             PlanModePolicy.decorateContext(callContext, sessionId);
             // 验证闭环软提示：闸门武装时往 system prompt 追加「收尾前自查」契约（只改副本）
             VerifyPolicy.decorateContext(callContext, verifyGate.isArmed());
+            // 循环护栏软提示：连续故障达软阈值时注入纠偏指令，给模型改策略的机会（硬熔断前的缓冲档）
+            loopGuard.decorateContext(callContext);
             List<Tool> effectiveTools = PlanModePolicy.effectiveTools(toolRegistry.getTools(), sessionId);
             // 流式输出：增量 token 实时打到控制台，长回答不再阻塞等待（model.stream.enabled 可关）
             StreamListener streamListener = ConfigUtil.getBoolean("model.stream.enabled", true)
