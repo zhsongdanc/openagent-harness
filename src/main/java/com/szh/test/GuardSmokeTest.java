@@ -33,6 +33,7 @@ public class GuardSmokeTest {
             testTestFixLoopSurvives();
             testPerToolTrip();
             testGlobalConsecutiveTrip();
+            testParallelSpikeDeferredThenTrip();
             testRepeatTrip();
             testFixThenRetryCredit();
             testAdviseInjection();
@@ -76,13 +77,18 @@ public class GuardSmokeTest {
 
     /**
      * 单工具路径独立熔断：同一工具连续故障达 maxFailuresPerTool(4)，用不同参数避开重复检测。
+     * 中间穿插 decorateContext 模拟运行时的轮次边界（提示送达后硬熔断才放行）。
      */
     private static void testPerToolTrip() {
         LoopGuard guard = new LoopGuard();
-        for (int i = 0; i < 4; i++) {
-            guard.record("read_file", "{\"p\":" + i + "}", "tool not found: read_file", false);
-        }
-        assertTrue("单工具连续故障应熔断", guard.isTripped());
+        guard.record("read_file", "{\"p\":1}", "tool not found: read_file", false);
+        deliverAdvice(guard); // 第二轮开头：此前无 pending，不计数
+        guard.record("read_file", "{\"p\":2}", "tool not found: read_file", false); // 达软阈值，累积提示
+        guard.record("read_file", "{\"p\":3}", "tool not found: read_file", false);
+        assertTrue("3 次连续故障未达硬阈值", !guard.isTripped());
+        deliverAdvice(guard); // 第四轮开头：软提示真正送达模型
+        guard.record("read_file", "{\"p\":4}", "tool not found: read_file", false);
+        assertTrue("提示送达后达阈应熔断", guard.isTripped());
         assertEquals("熔断类型", "tool-failures", guard.getViolation().getType());
         assertTrue("熔断原因含工具名", guard.getViolation().getReason().contains("read_file"));
         assertTrue("熔断原因附已尝试的恢复动作",
@@ -91,14 +97,42 @@ public class GuardSmokeTest {
 
     /**
      * 全局路径熔断：不同工具交替故障，避开单工具阈值，累积到全局 maxConsecutiveFailures(5) 熔断。
+     * 同样模拟轮次边界：提示送达后再故障才允许硬熔断。
      */
     private static void testGlobalConsecutiveTrip() {
         LoopGuard guard = new LoopGuard();
-        for (String t : new String[]{"t1", "t2", "t3", "t4", "t5"}) {
+        for (String t : new String[]{"t1", "t2", "t3", "t4"}) {
             guard.record(t, "{}", "execute failed: boom", false);
         }
-        assertTrue("全局连续故障应熔断", guard.isTripped());
+        deliverAdvice(guard); // 达 adviseAfterFailures(3) 的全局提示在此送达
+        guard.record("t5", "{}", "execute failed: boom", false);
+        assertTrue("提示送达后全局连续故障应熔断", guard.isTripped());
         assertEquals("熔断类型", "consecutive-failures", guard.getViolation().getType());
+    }
+
+    /**
+     * 并行误杀缺口回归：同一轮内多个并行失败瞬间打满阈值（实测 terminal-bench 中
+     * read_file 同轮 3 次越界拒绝 + 历史 1 次即被熔断），而软提示要到下一轮开头才送达——
+     * 必须缓一拍；提示送达后模型仍故障，下一次失败正常熔断，真死循环不逃逸。
+     */
+    private static void testParallelSpikeDeferredThenTrip() {
+        LoopGuard guard = new LoopGuard();
+        // 同轮并行回放 4 次失败（无任何 decorate），瞬间达到 maxFailuresPerTool(4)
+        for (int i = 0; i < 4; i++) {
+            guard.record("read_file", "{\"p\":" + i + "}", "参数错误: 在工作区外", false);
+        }
+        assertTrue("同轮并行打满阈值但提示未送达 → 缓熔断", !guard.isTripped());
+        deliverAdvice(guard); // 下一轮开头，纠偏提示真正注入模型上下文
+        guard.record("read_file", "{\"p\":9}", "参数错误: 在工作区外", false);
+        assertTrue("提示送达后仍故障 → 正常熔断不逃逸", guard.isTripped());
+        assertEquals("熔断类型", "tool-failures", guard.getViolation().getType());
+    }
+
+    /** 模拟运行时每轮开头调用 decorateContext（兼作软提示送达点） */
+    private static void deliverAdvice(LoopGuard guard) {
+        List<MessageItem> ctx = new ArrayList<>();
+        ctx.add(new SystemMessageItem("sys"));
+        guard.decorateContext(ctx);
     }
 
     /**

@@ -98,6 +98,13 @@ public class LoopGuard {
 
     /** 本轮累积、待下一轮注入的纠偏软提示；decorateContext 取走后清空 */
     private final StringBuilder pendingAdvice = new StringBuilder();
+    /**
+     * 已送达模型的提示次数：decorateContext 每带走一批提示 +1。硬熔断前要求 ≥1——
+     * 保证模型真正看过至少一轮纠偏提示后仍继续故障才允许 trip，修复「同轮并行失败
+     * 瞬间打满阈值时模型至死没见过提示」的误杀缺口；被缓下的计数不过期（sticky 累加），
+     * 下一轮提示送达后再故障一次即正常熔断。
+     */
+    private int adviceDelivered = 0;
     /** 全局软提示只发一次，避免每轮刷屏 */
     private boolean issuedGlobalAdvice = false;
     /** 已点名提示过的工具，每个只发一次 */
@@ -143,7 +150,7 @@ public class LoopGuard {
             int toolFaults = perToolFaults.merge(toolCode, 1, Integer::sum);
 
             // 1a. 单工具路径：达硬阈值先熔断，否则达软阈值点名提示（每工具一次）
-            if (toolFaults >= maxFailuresPerTool) {
+            if (toolFaults >= maxFailuresPerTool && canTrip()) {
                 trip("tool-failures",
                         "工具 [" + toolCode + "] 连续故障 " + toolFaults + " 次（阈值 " + maxFailuresPerTool
                                 + "），已熔断" + recoverySuffix());
@@ -155,7 +162,7 @@ public class LoopGuard {
             }
 
             // 1b. 全局路径：达硬阈值熔断，否则达软阈值注入纠偏提示（一次）
-            if (consecutiveFailures >= maxConsecutiveFailures) {
+            if (consecutiveFailures >= maxConsecutiveFailures && canTrip()) {
                 trip("consecutive-failures",
                         "工具连续故障 " + consecutiveFailures + " 次（阈值 " + maxConsecutiveFailures
                                 + "），已熔断" + recoverySuffix());
@@ -197,6 +204,18 @@ public class LoopGuard {
     }
 
     /**
+     * 硬熔断前置闸门：保证「先提示后熔断」的分级语义在并行场景不被绕过。
+     * 同一轮内多个并行失败会把计数瞬间打满阈值，而软提示要到下一轮开头才被
+     * {@link #decorateContext} 送达模型——若此时直接 trip，模型至死没见过提醒、等于硬杀 run
+     * （实测 terminal-bench 中同轮 3 次 read_file 越界拒绝 + 历史 1 次即误杀）。故要求软提示
+     * 至少被 decorateContext 真正送达过一轮才允许熔断；被缓下的轮次里计数继续累加，
+     * 提示送达后模型仍故障则下一次 record 即正常熔断，真死循环不会逃逸。
+     */
+    private boolean canTrip() {
+        return adviceDelivered >= 1;
+    }
+
+    /**
      * 把本轮累积的纠偏软提示追加到上下文副本的 system prompt（只改副本，不动事件真相源），
      * 与 {@code PlanModePolicy.decorateContext} / {@code VerifyPolicy.decorateContext} 同范式；
      * 两条运行时每轮各调一次。一次性提示：consume 后清空，下一轮 system prompt 从 modelContext 重建即自动消失。
@@ -206,6 +225,7 @@ public class LoopGuard {
         if (advice == null || callContext == null) {
             return;
         }
+        adviceDelivered++;
         String directive = "\n\n# 循环护栏提醒\n" + advice;
         for (MessageItem item : callContext) {
             if (item instanceof SystemMessageItem system) {

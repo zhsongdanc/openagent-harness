@@ -116,8 +116,12 @@ public abstract class FileToolSupport implements Tool {
                 && PathGuard.isWithinAllowed(resolved, policy)) {
             return;
         }
+        // 拒绝回执必须给出模型当下就能执行的出路（Plan B 范式）：只读命令在权限闸门下
+        // 本来就放行，若不提示改用 shell，模型只会原样重试，攒满 LoopGuard 连续故障阈值。
+        // 写类拒绝不加此提示：安全环境下 shell 写同样会被拦，提示反而是误导。
         throw new IllegalArgumentException("路径 " + resolved + " 在工作区外，禁止读取"
-                + "（如确需放开请配置 file.tools.allowOutside=true）");
+                + "（可配置 file.tools.allowOutside=true 放开到策略允许根；"
+                + "如只是想查看该文件，可改用 shell 工具执行 cat/grep 配绝对路径读取）");
     }
 
     /**
