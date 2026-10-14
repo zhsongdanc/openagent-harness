@@ -101,6 +101,8 @@ public class EditFileTool extends FileToolSupport {
             String updated = replaceAll
                     ? content.replace(oldText, newText)
                     : replaceFirst(content, oldText, newText);
+            // 落盘前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
+            captureSnapshot(file, toolContext);
             writeFile(file, updated);
 
             String diff = buildUnifiedDiff(content, updated);

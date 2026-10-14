@@ -14,6 +14,32 @@ public class CommonUtils {
     }
 
     /**
+     * 从轮次标识（形如 {@code turn_7}）解析出可比较的轮次序号。
+     * <p>
+     * 轮次名由运行时的 {@code getTurnName(int)} 生成，事件与文件快照都按它归档；
+     * 回溯（resume 截止 / 事件截断 / 快照还原）需要按序号做数值比较，故抽取为公共解析。
+     * 取末尾连续数字，null/无数字/解析失败一律返回 0（视为最早、不会被任何“>= N”过滤命中）。
+     */
+    public static int parseTurnSeq(String turnId) {
+        if (turnId == null || turnId.isBlank()) {
+            return 0;
+        }
+        int end = turnId.length();
+        int start = end;
+        while (start > 0 && Character.isDigit(turnId.charAt(start - 1))) {
+            start--;
+        }
+        if (start == end) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(turnId.substring(start, end));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
      * 展开字符串中的 {@code ~}（用户 home）与 {@code ${VAR}}（环境变量）。
      * <p>
      * 抽为公共方法，供 {@code McpConfigLoader} 与验证闭环 {@code VerifyConfigLoader} 共用同一套展开语义，

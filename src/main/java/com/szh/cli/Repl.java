@@ -17,6 +17,7 @@ import com.szh.model.ModelFactory;
 import com.szh.store.EventStoreFactory;
 import com.szh.store.StoreEnum;
 import com.szh.tool.ToolRegistry;
+import com.szh.tool.store.FileSnapshotStore;
 import com.szh.tool.tools.meta.AgentMode;
 import com.szh.tool.tools.meta.AgentModeStore;
 import com.szh.tool.tools.meta.TodoStore;
@@ -327,6 +328,7 @@ public class Repl {
                 System.out.flush();
             }
             case "/replay" -> replay(parts);
+            case "/rewind" -> handleRewind(parts);
             case "/mcp" -> handleMcp(parts);
             case "/verify" -> handleVerify();
             default -> System.out.println("未知命令: " + cmd + "（/help 查看可用命令）");
@@ -398,6 +400,62 @@ public class Repl {
         }
     }
 
+    /**
+     * /rewind：回溯到历史时刻（对标 Claude Code 的 /rewind，只覆盖 write_file/edit_file 的文件改动 + 对话上下文）。
+     * <ul>
+     *   <li>{@code /rewind}：列出可回溯的文件检查点（有改动的轮次 + 变更文件）；</li>
+     *   <li>{@code /rewind <N>}：回溯到第 N 轮<b>之前</b>——还原文件、截断事件日志、重建上下文到同一时刻。</li>
+     * </ul>
+     * 文件还原与上下文回退成对做，保证两者落在同一时刻不脱节；shell/git/子 agent 的副作用不在回溯范围。
+     */
+    private void handleRewind(String[] parts) {
+        if (!FileSnapshotStore.enabled()) {
+            System.out.println("回溯未启用（配置 rewind.enabled=true 开启）");
+            return;
+        }
+        String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        if (parts.length < 2) {
+            List<FileSnapshotStore.Manifest> checkpoints = FileSnapshotStore.listCheckpoints(workspace, sessionId);
+            if (checkpoints.isEmpty()) {
+                System.out.println("（当前会话没有可回溯的文件检查点：本会话尚未用 write_file/edit_file 改过文件）");
+            } else {
+                System.out.println("可回溯的文件检查点（按轮次）：");
+                for (FileSnapshotStore.Manifest m : checkpoints) {
+                    String time = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(m.getTimestamp()));
+                    System.out.println("  turn " + m.getTurnSeq() + "  " + time + "  （" + m.getEntries().size() + " 个文件）");
+                    for (FileSnapshotStore.Entry e : m.getEntries()) {
+                        System.out.println("      " + (e.isExisted() ? "M " : "A ") + e.getRel());
+                    }
+                }
+            }
+            System.out.println("用法：/rewind <N> 回溯到第 N 轮之前（撤销第 N 轮及之后的对话与文件改动）");
+            return;
+        }
+        int target;
+        try {
+            target = Integer.parseInt(parts[1].trim());
+        } catch (NumberFormatException e) {
+            System.out.println("无效轮次号：" + parts[1] + "（不带参数的 /rewind 可查看可回溯的检查点）");
+            return;
+        }
+        if (target < 1) {
+            System.out.println("轮次号必须 >= 1");
+            return;
+        }
+        // 1. 还原文件到第 target 轮之前；2. 截断事件日志（撤销 target 及之后）；3. 重建上下文并回拨 turnId
+        FileSnapshotStore.RestoreResult rr = FileSnapshotStore.restoreToTurn(workspace, sessionId, target);
+        agentState.getEventStore().truncateFromTurn(sessionId, target);
+        agentState.resume(sessionId, target);
+        // 4. 元状态（待办/模式）按截断后的事件流重新回灌
+        TodoStore.get().clear(sessionId);
+        restoreMetaState();
+        System.out.println("已回溯到第 " + target + " 轮之前：还原文件 " + rr.getRestored()
+                + " 个、删除新建 " + rr.getDeleted() + " 个"
+                + (rr.getPaths().isEmpty() ? "" : "（" + String.join(", ", rr.getPaths()) + "）"));
+        System.out.println("上下文与 turnId 已同步回退，可继续对话（下一轮为 turn " + target + "）。");
+        System.out.println("注意：shell/git/子 agent 的副作用与你的手动改动不在回溯范围内。");
+    }
+
     private static String firstLine(String s) {
         int idx = s.indexOf('\n');
         return idx < 0 ? s : s.substring(0, idx);
@@ -467,6 +525,8 @@ public class Repl {
                   /mcp [reload|tools]   查看 MCP Server 状态 / 重载配置 / 列出 MCP 工具
                   /verify               即时跑一遍项目验证命令（编译/测试）并打印结果
                   /replay [id] [--html] 回放执行时间线；--html 额外导出可视化文件
+                  /rewind               列出可回溯的文件检查点（write_file/edit_file 改动）
+                  /rewind <N>           回溯到第 N 轮之前（同时回退对话上下文与文件）
                   /clear                清屏
                 其它任意输入都会作为一轮对话发给模型。""");
     }

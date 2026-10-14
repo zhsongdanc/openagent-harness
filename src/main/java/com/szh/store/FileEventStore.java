@@ -1,6 +1,7 @@
 package com.szh.store;
 
 import com.szh.event.Event;
+import com.szh.utils.CommonUtils;
 import com.szh.utils.ConfigUtil;
 import com.szh.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -99,6 +100,35 @@ public class FileEventStore implements EventStore {
 
     private Path sessionFile(String sessionId) {
         return sessionDir.resolve(sanitize(sessionId) + ".jsonl");
+    }
+
+    /**
+     * 回溯截断：重写 JSONL，只保留轮次序号 {@code < turnSeq} 的事件行（无法解析的行保守保留，避免误删）。
+     * 失败仅告警，不抛异常拖垮回溯流程。
+     */
+    @Override
+    public void truncateFromTurn(String sessionId, int turnSeq) {
+        Path file = sessionFile(sessionId);
+        if (!Files.exists(file)) {
+            return;
+        }
+        try {
+            List<String> kept = new ArrayList<>();
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                if (line == null || line.isBlank()) {
+                    continue;
+                }
+                SerializedEvent se = JsonUtil.parse(line, SerializedEvent.class);
+                if (se == null || CommonUtils.parseTurnSeq(se.turnId()) < turnSeq) {
+                    kept.add(line);
+                }
+            }
+            String body = kept.isEmpty() ? "" : String.join(System.lineSeparator(), kept) + System.lineSeparator();
+            Files.writeString(file, body, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException | RuntimeException e) {
+            log.error("FileEventStore: truncate from turn {} failed: {}", turnSeq, file, e);
+        }
     }
 
     /**

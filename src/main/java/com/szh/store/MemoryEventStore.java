@@ -1,6 +1,7 @@
 package com.szh.store;
 
 import com.szh.event.Event;
+import com.szh.utils.CommonUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,5 +29,11 @@ public class MemoryEventStore implements EventStore{
     @Override
     public List<Event> getEvents(String sessionId) {
         return events.stream().filter(event -> event.getSessionId().equals(sessionId)).toList();
+    }
+
+    @Override
+    public void truncateFromTurn(String sessionId, int turnSeq) {
+        events.removeIf(event -> sessionId.equals(event.getSessionId())
+                && CommonUtils.parseTurnSeq(event.getTurnId()) >= turnSeq);
     }
 }

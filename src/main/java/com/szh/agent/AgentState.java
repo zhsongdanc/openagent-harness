@@ -8,6 +8,7 @@ import com.szh.context.dto.ToolMessageItem;
 import com.szh.event.Event;
 import com.szh.event.MessageEvent;
 import com.szh.store.EventStore;
+import com.szh.utils.CommonUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -93,6 +94,24 @@ public class AgentState {
         List<Event> events = new ArrayList<>(eventStore.getEvents(sessionId));
         events.sort(Comparator.comparingLong(Event::getTimestamp));
         this.modelContext = trimIncompleteTail(deriveMessages(events));
+    }
+
+    /**
+     * 回溯恢复：只重放轮次序号 {@code < upToTurnSeq} 的事件，把上下文重建到「第 upToTurnSeq 轮之前」，
+     * 即撤销第 upToTurnSeq 轮及其之后的全部对话。与 {@code FileSnapshotStore.restoreToTurn} 的文件还原
+     * 配套使用，保证「上下文回退」与「文件回退」落在同一时刻，不脱节。
+     * <p>
+     * 同时把 turnId 计数回拨到 {@code upToTurnSeq - 1}，使续跑的下一轮复用被撤销的轮次号，
+     * 与快照目录命名保持连续。调用方需另行截断事件日志（{@code EventStore.truncateFromTurn}）
+     * 以保证持久化引擎下不会残留被撤销轮次的事件。
+     */
+    public void resume(String sessionId, int upToTurnSeq) {
+        List<Event> events = new ArrayList<>(eventStore.getEvents(sessionId));
+        events.sort(Comparator.comparingLong(Event::getTimestamp));
+        // 丢弃目标轮次及之后的事件（turnId 无法解析时序号记 0，天然保留）
+        events.removeIf(e -> CommonUtils.parseTurnSeq(e.getTurnId()) >= upToTurnSeq);
+        this.modelContext = trimIncompleteTail(deriveMessages(events));
+        this.turnId = Math.max(0, upToTurnSeq - 1);
     }
 
     /**

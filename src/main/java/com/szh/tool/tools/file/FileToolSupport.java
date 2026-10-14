@@ -5,6 +5,7 @@ import com.szh.tool.Tool;
 import com.szh.tool.ToolContext;
 import com.szh.tool.security.PathGuard;
 import com.szh.tool.security.SandboxPolicy;
+import com.szh.tool.store.FileSnapshotStore;
 import com.szh.utils.ConfigUtil;
 import com.szh.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -147,6 +148,15 @@ public abstract class FileToolSupport implements Tool {
             throw new IllegalArgumentException("目标是目录不是文件: " + file);
         }
         return Files.readAllLines(file, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 写盘前捕获文件的 before-image，供 {@code /rewind} 回溯到历史时刻时还原（对标 Claude Code checkpoint）。
+     * 每轮每文件幂等（只记首次改动前的镜像）；无 session/turnId 或回溯关闭时静默跳过，绝不拖垮写操作。
+     * 由 {@code WriteFileTool} / {@code EditFileTool} 在真正落盘前调用。
+     */
+    protected void captureSnapshot(Path file, ToolContext toolContext) {
+        FileSnapshotStore.capture(toolContext, file);
     }
 
     /**

@@ -3,6 +3,7 @@ package com.szh.store;
 import com.szh.event.Event;
 import com.szh.store.db.AgentEventPO;
 import com.szh.store.db.AgentEventRepository;
+import com.szh.utils.CommonUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -50,6 +51,21 @@ public class MySqlEventStore implements EventStore {
         return agentEventPOS.stream()
                 .map(this::convertToEvent)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 回溯截断：删除该 session 中轮次序号 {@code >= turnSeq} 的事件行。
+     * turnId 列是字符串，无法直接在 SQL 里做数值比较，故先查出再按解析序号逐条删除（复用现有仓储方法）。
+     */
+    @Override
+    public void truncateFromTurn(String sessionId, int turnSeq) {
+        AgentEventRepository agentEventRepository = new AgentEventRepository();
+        List<AgentEventPO> pos = agentEventRepository.findBySessionId(sessionId);
+        for (AgentEventPO po : pos) {
+            if (CommonUtils.parseTurnSeq(po.getTurnId()) >= turnSeq) {
+                agentEventRepository.deleteById(po.getId());
+            }
+        }
     }
 
     private AgentEventPO convertToAgentEventPO(Event event) {

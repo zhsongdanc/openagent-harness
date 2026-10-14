@@ -25,4 +25,12 @@ public interface EventStore {
         List<Event> events = getEvents(sessionId);
         return events != null && !events.isEmpty();
     }
+
+    /**
+     * 截断事件日志：删除某 session 中轮次序号 {@code >= turnSeq} 的全部事件，
+     * 供「回溯到历史时刻」撤销被回退轮次的落库记录，保证持久化引擎下续跑不会重放到旧事件。
+     * 默认 no-op（不支持截断的实现仅重建内存上下文）；持久化引擎应覆盖实现。
+     */
+    default void truncateFromTurn(String sessionId, int turnSeq) {
+    }
 }

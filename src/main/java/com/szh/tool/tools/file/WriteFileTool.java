@@ -61,6 +61,8 @@ public class WriteFileTool extends FileToolSupport {
             boolean existed = Files.exists(file);
             long oldLines = existed ? readLines(file).size() : 0;
 
+            // 落盘前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
+            captureSnapshot(file, toolContext);
             writeFile(file, content);
 
             int newLines = content.split("\n", -1).length;
