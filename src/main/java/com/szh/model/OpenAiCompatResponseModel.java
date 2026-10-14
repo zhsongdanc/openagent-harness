@@ -21,6 +21,7 @@ import com.szh.context.dto.MessageItem;
 import com.szh.context.dto.ReasoningMessageItem;
 import com.szh.context.dto.ToolMessageItem;
 import com.szh.model.dto.output.*;
+import com.szh.model.dto.TokenUsage;
 import com.szh.tool.Tool;
 import com.szh.tool.ToolDefinition;
 import com.szh.utils.ConfigUtil;
@@ -365,6 +366,9 @@ public class OpenAiCompatResponseModel implements ResponseModel {
      */
     protected ResponseModelResp parseResponse(String json) throws Exception {
         JsonNode root = mapper.readTree(json);
+        JsonNode usageNode = root.path("usage");
+        log.debug("[DeepSeek-Responses] raw usage node: {}", usageNode.isMissingNode() ? "MISSING" : usageNode.toString());
+        TokenUsage tokenUsage = parseResponsesUsage(usageNode);
         JsonNode output = root.path("output");
 
         List<OutputItem> items = new ArrayList<>();
@@ -385,7 +389,24 @@ public class OpenAiCompatResponseModel implements ResponseModel {
         }
         log.info("Model returned {} output items: [{}]", items.size(), typesSummary);
 
-        return new ResponseModelResp(items);
+        return new ResponseModelResp(items, tokenUsage);
+    }
+
+    /**
+     * 解析 Responses API 的 usage 节点：字段名为 input_tokens/output_tokens/total_tokens
+     * （与 Chat Completions 的 prompt_tokens/completion_tokens 不同），兼容两套命名以防网关差异。
+     * usage 缺失或非对象时返回 null（与 Chat 链路 parseTokenUsage 语义一致）。
+     */
+    private TokenUsage parseResponsesUsage(JsonNode usage) {
+        if (usage == null || usage.isMissingNode() || usage.isNull()) {
+            return null;
+        }
+        int promptTokens = usage.path("input_tokens").asInt(usage.path("prompt_tokens").asInt(0));
+        int completionTokens = usage.path("output_tokens").asInt(usage.path("completion_tokens").asInt(0));
+        int totalTokens = usage.path("total_tokens").asInt(promptTokens + completionTokens);
+        int cachedTokens = usage.path("input_tokens_details").path("cached_tokens")
+                .asInt(usage.path("prompt_tokens_details").path("cached_tokens").asInt(0));
+        return new TokenUsage(promptTokens, completionTokens, totalTokens, cachedTokens);
     }
 
     /**

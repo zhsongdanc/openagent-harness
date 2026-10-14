@@ -96,6 +96,7 @@ public class AgentResponseRuntime {
     public String run(String sessionId, String userInput) {
         String runId = CommonUtils.generateId();
         RunTrace runTrace = new RunTrace(runId, sessionId, System.currentTimeMillis());
+        runTrace.setTokenTracker(tokenTracker);
 
         agentState.incrementTurnId();
         String turnId = getTurnName(agentState.getTurnId());
@@ -124,12 +125,16 @@ public class AgentResponseRuntime {
             }
 
             ResponseModelResp modelResp = callModel(buildCallContext(ctx), ctx, round);
+            // 记录本轮 token 用量（对齐 Chat 链路 AgentRuntime）：既累计到 run 级 tracker，也落到 StepTrace 供回放
+            tokenTracker.recordRound(modelResp.getTokenUsage());
             DispatchOutcome outcome = dispatchItems(modelResp, ctx.handleContext);
             // 一轮内多个 function_call 并发执行（取代旧串行）：事件按「全部 started → 并发执行 →
             // 全部 finished」有序落库，满足 Responses API 分组约束，执行细节由 ParallelToolExecutor 兜底
             executeRoundCalls(outcome.roundCalls(), ctx, round);
 
-            runTrace.addStepTrace(new StepTrace(round, roundStart, System.currentTimeMillis()));
+            StepTrace stepTrace = new StepTrace(round, roundStart, System.currentTimeMillis());
+            stepTrace.setTokenUsage(modelResp.getTokenUsage());
+            runTrace.addStepTrace(stepTrace);
 
             // 熔断触发：结束本次 run，把原因作为最终结果回传
             if (ctx.loopGuard.isTripped()) {
