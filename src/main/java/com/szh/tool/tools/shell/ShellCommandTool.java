@@ -68,7 +68,7 @@ public abstract class ShellCommandTool implements ShellTool {
         ShellRunner.ShellResult result = ShellRunner.run(execCommand, resolveWorkspace(toolContext),
                 environment(), TIMEOUT_SECONDS);
         if (result.error() != null) {
-            return "execute failed: " + result.error();
+            return translateExecError(result.error());
         }
         if (result.timedOut()) {
             return getCode() + " 执行超时（" + TIMEOUT_SECONDS + "s）已中断：" + cmdline;
@@ -91,6 +91,41 @@ public abstract class ShellCommandTool implements ShellTool {
      * 构建命令数组，第一个元素为可执行文件名；参数缺失时抛异常，由 execute 统一转成工具结果
      */
     protected abstract List<String> buildCommand(String args);
+
+    /**
+     * 将子进程启动异常转为面向模型的友好回执：识别「命令未安装」（ENOENT），
+     * 把 {@code Cannot run program "mvn" ... error: 2 (No such file or directory)} 这类 Java 视角堆栈信息
+     * 翻译成“不要重试该命令、改用环境已有手段”的明确指令，让模型一轮止损。
+     * 非 ENOENT 的其它异常仍原样返回 {@code execute failed: ...}。
+     * <p>
+     * 与 {@link com.szh.tool.BinaryProbe} 按需注册互补：正常环境下工具压根不发 schema，
+     * 探测关闭或 PATH 异常时由这条兜底。
+     */
+    public static String translateExecError(String error) {
+        if (error != null
+                && error.contains("Cannot run program")
+                && (error.contains("No such file or directory") || error.contains("error: 2") || error.contains("error=2"))) {
+            String name = extractProgramName(error);
+            String cmd = (name == null || name.isBlank()) ? "该命令" : name;
+            return "命令未安装：" + cmd + "（PATH 中找不到）。请勿再尝试 " + cmd
+                    + " 相关命令，改用当前环境已具备的工具/语言（如直接写 Python/用 shell 内建）。";
+        }
+        return "execute failed: " + error;
+    }
+
+    /**
+     * 从 {@code Cannot run program "<bin>" ...} 消息里取出第一个引号包裹的可执行文件名，取不到返回 null
+     */
+    private static String extractProgramName(String error) {
+        String marker = "Cannot run program \"";
+        int start = error.indexOf(marker);
+        if (start < 0) {
+            return null;
+        }
+        int from = start + marker.length();
+        int to = error.indexOf('"', from);
+        return to > from ? error.substring(from, to) : null;
+    }
 
     /**
      * 子进程额外环境变量钩子：默认空，不影响既有 shell 工具。

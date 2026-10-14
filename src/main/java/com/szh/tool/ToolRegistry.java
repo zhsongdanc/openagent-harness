@@ -35,6 +35,7 @@ import com.szh.tool.tools.shell.MvnTool;
 import com.szh.tool.tools.shell.PwdTool;
 import com.szh.tool.tools.shell.TailTool;
 import com.szh.utils.ConfigUtil;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +46,7 @@ import java.util.Set;
  * @describe
  * @date 2026/8/25 12:09
  */
+@Slf4j
 public class ToolRegistry {
 
     private List<Tool> tools;
@@ -112,10 +114,37 @@ public class ToolRegistry {
         allTools.addAll(mcpTools());
 
         // 白名单过滤：子 agent 只保留其类型允许的工具 code；主 registry（allowedCodes=null）全量保留
-        List<Tool> effective = allowedCodes == null
+        List<Tool> whitelisted = allowedCodes == null
                 ? allTools
                 : allTools.stream().filter(t -> allowedCodes.contains(t.getCode())).toList();
+
+        // 能力探测过滤：声明了 requiredBinaries 且本机 PATH 缺任一命令的工具不注册，
+        // 避免把 git/mvn 等本机不具备的命令暴露给模型诱发无谓试错（对齐 memoryTools「不可用即不污染列表」）。
+        List<Tool> effective = new ArrayList<>();
+        for (Tool t : whitelisted) {
+            List<String> missing = missingBinaries(t);
+            if (!missing.isEmpty()) {
+                log.info("tool not registered, missing required command(s): tool={}, missing={}",
+                        t.getCode(), missing);
+                continue;
+            }
+            effective.add(t);
+        }
         tools = List.copyOf(effective);
+    }
+
+    /**
+     * 返回该工具声明的 requiredBinaries 中本机 PATH 缺失的命令列表（无缺失返回空列表）。
+     * 抽出为静态方法供 {@code rebuild} 过滤与冒烟测试复用；具体探测语义见 {@link BinaryProbe#isAvailable}。
+     */
+    public static List<String> missingBinaries(Tool tool) {
+        List<String> missing = new ArrayList<>();
+        for (String binary : tool.requiredBinaries()) {
+            if (!BinaryProbe.isAvailable(binary)) {
+                missing.add(binary);
+            }
+        }
+        return missing;
     }
 
     /**

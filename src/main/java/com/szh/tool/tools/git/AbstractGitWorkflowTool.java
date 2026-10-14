@@ -70,6 +70,15 @@ public abstract class AbstractGitWorkflowTool extends ShellCommandTool {
     }
 
     /**
+     * git 工作流工具依赖本机 {@code git} 命令：PATH 中不存在时 registry 不注册本组工具，
+     * 避免把不可用命令暴露给模型（与裸 {@code GitTool} 同一前提）。
+     */
+    @Override
+    public List<String> requiredBinaries() {
+        return List.of("git");
+    }
+
+    /**
      * 起手式：git --no-pager，子类在此基础上追加子命令与参数
      */
     protected List<String> gitBase() {

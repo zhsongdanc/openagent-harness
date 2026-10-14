@@ -17,7 +17,8 @@ public class GitStatusTool extends AbstractGitWorkflowTool {
 
     private static final ToolDefinition TOOL_DEFINITION = definition(
             CODE,
-            "查看工作区改动状态（git status -sb，短格式含分支跟踪）。提交前先用它确认改动范围。可选 paths 限定到指定文件/目录",
+            "【适用前提】仅当任务确实涉及版本控制（需要提交/推送代码）时才使用；纯脚本、数值、数据处理等非版本控制任务无需调用。"
+                    + "查看工作区改动状态（git status -sb，短格式含分支跟踪）。提交前先用它确认改动范围。可选 paths 限定到指定文件/目录",
             "{\"type\":\"object\",\"properties\":{\"paths\":{\"type\":\"string\",\"description\":\"可选，限定查看的路径，多个用空格分隔；缺省查看整个仓库\"}},\"required\":[]}");
 
     @Override

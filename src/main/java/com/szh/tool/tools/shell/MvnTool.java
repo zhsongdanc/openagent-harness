@@ -17,7 +17,8 @@ public class MvnTool extends ShellCommandTool {
 
     private static final ToolDefinition TOOL_DEFINITION = definition(
             CODE,
-            "在工作区执行 maven 构建，如 clean compile、test -Dtest=FooTest、package -DskipTests、dependency:tree。默认批处理模式 -B（无进度条、无交互）；构建耗时较长，超时会被中断；子进程继承当前环境变量，JAVA_HOME 与项目要求的 JDK 不一致时会编译失败",
+            "【适用前提】仅当工作区是 Maven/Java 项目（存在 pom.xml）且任务需要构建/测试/查依赖时才使用；非 Java 项目（如 Python/脚本/数值任务）没有 pom.xml，不要调用本工具。"
+                    + "在工作区执行 maven 构建，如 clean compile、test -Dtest=FooTest、package -DskipTests、dependency:tree。默认批处理模式 -B（无进度条、无交互）；构建耗时较长，超时会被中断；子进程继承当前环境变量，JAVA_HOME 与项目要求的 JDK 不一致时会编译失败",
             "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"maven 目标及其参数，如 clean package -DskipTests\"},\"options\":{\"type\":\"string\",\"description\":\"附加的 mvn 全局选项，多个用空格分隔，默认 -B\"}},\"required\":[\"command\"]}");
 
     @Override
@@ -28,6 +29,11 @@ public class MvnTool extends ShellCommandTool {
     @Override
     public ToolDefinition getToolDefinition() {
         return TOOL_DEFINITION;
+    }
+
+    @Override
+    public List<String> requiredBinaries() {
+        return List.of(CODE);
     }
 
     @Override

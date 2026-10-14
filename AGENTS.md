@@ -108,6 +108,7 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
   承载一轮多调用（标量字段保留为首调用快照兼容旧路径）。配套线程安全：`AgentState.applyEvent`/`LoopGuard.record`/
   `ConsolePermissionPrompter.confirm` 均已 synchronized。
 - **冒烟验证**：`com.szh.test.P1SmokeTest`（main 直跑，不依赖模型 API）覆盖文件工具链/路径安全/repo_map/并行事件有序/工厂装配。
+- **工具能力探测按需注册**（`com.szh.tool.BinaryProbe`，开关 `tool.probe.binaries.enabled`）：`Tool` 新增 `requiredBinaries()` 声明依赖的外部命令（裸 `GitTool`/`MvnTool`、`AbstractGitWorkflowTool` 都声明 `git`，coreutils 不声明避免误判 shell 内建）；`ToolRegistry.rebuild()` 末尾统一一道过滤：白名单过滤后，再剔除本机 PATH 缺任一命令的工具（纯 `File` stat 扫描 PATH 不起子进程、结果进程内缓存，开关闭/PATH 不可得时一律视为可用不误滤），被剔除的记 info 日志。补上裸 git/mvn 无 config 开关的漏口，避免在无 git/mvn 的环境（如 terminal-bench 纯 Python 容器）把不可用命令暴露给模型诱发无谓试错。执行层另有 `ShellCommandTool.translateExecError` 互补：探测关闭或命令中途消失时，把 `Cannot run program ... error: 2` 转为「命令未安装、勿重试、改用环境已有手段」的友好回执。
 
 ## P2 交互与可观测性
 
@@ -198,4 +199,6 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
 ## 代码风格
 
 - 包根为 `com.szh`；新增工具放到 `com.szh.tool.tools` 下并注册进 `ToolRegistry`。
+- 新增依赖外部命令（如 `git`/`mvn`/`docker` 等非 coreutils）的工具时，覆写 `Tool.requiredBinaries()` 声明其依赖命令，
+  `ToolRegistry` 会按本机 PATH 自动按需注册、缺命令则不暴露给模型；纯内置能力/coreutils 无需声明。
 - 中文注释，解释“为什么”而非“是什么”；对外配置项走 `ConfigUtil` 统一读取。

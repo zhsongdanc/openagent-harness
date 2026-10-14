@@ -1,5 +1,7 @@
 package com.szh.tool;
 
+import java.util.List;
+
 /**
  * @author demussong
  * @describe
@@ -21,5 +23,13 @@ public interface Tool {
      */
     default boolean inlineResult() {
         return false;
+    }
+
+    /**
+     * 该工具依赖的外部可执行文件（使用前提之一）。rebuild 时若 PATH 中缺任一，则本工具不注册，
+     * 避免把本机不具备的命令暴露给模型诱发无谓试错（如裸 {@code git}/{@code mvn}）。默认空表示无外部命令前提。
+     */
+    default List<String> requiredBinaries() {
+        return List.of();
     }
 }

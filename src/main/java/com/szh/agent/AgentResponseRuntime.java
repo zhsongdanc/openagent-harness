@@ -93,6 +93,14 @@ public class AgentResponseRuntime {
         this.compactionManager = new ContextCompactionManager(new ResponseModelSummarizer(model), tokenTracker);
     }
 
+    /**
+     * 暴露本次 run 的 token 统计入口，供 REPL 在 --prompt 一次性执行结束时打印机器可读用量摘要
+     * （外部评测如 Terminal-Bench/Harbor 适配器据此回填 token 与轮次指标）。
+     */
+    public TokenTracker getTokenTracker() {
+        return tokenTracker;
+    }
+
     public String run(String sessionId, String userInput) {
         String runId = CommonUtils.generateId();
         RunTrace runTrace = new RunTrace(runId, sessionId, System.currentTimeMillis());

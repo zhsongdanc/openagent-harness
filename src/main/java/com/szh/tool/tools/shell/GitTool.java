@@ -17,7 +17,8 @@ public class GitTool extends ShellCommandTool {
 
     private static final ToolDefinition TOOL_DEFINITION = definition(
             CODE,
-            "在工作区执行 git 子命令，如 status -sb、log --oneline -10、diff HEAD~1、show HEAD。固定带 --no-pager 避免分页阻塞；不区分只读与写操作，push、reset 等命令是否放行由使用方约束",
+            "【适用前提】仅当任务确实涉及版本控制（查看/提交/推送/查历史）时才使用；纯脚本、数值计算、数据处理等与版本管理无关的任务无需调用本工具，不要因为它是内置工具就试探性运行。"
+                    + "在工作区执行 git 子命令，如 status -sb、log --oneline -10、diff HEAD~1、show HEAD。固定带 --no-pager 避免分页阻塞；不区分只读与写操作，push、reset 等命令是否放行由使用方约束",
             "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"git 子命令及其参数，如 status -sb\"}},\"required\":[\"command\"]}");
 
     @Override
@@ -28,6 +29,11 @@ public class GitTool extends ShellCommandTool {
     @Override
     public ToolDefinition getToolDefinition() {
         return TOOL_DEFINITION;
+    }
+
+    @Override
+    public List<String> requiredBinaries() {
+        return List.of(CODE);
     }
 
     @Override

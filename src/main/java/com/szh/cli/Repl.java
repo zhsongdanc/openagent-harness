@@ -16,6 +16,7 @@ import com.szh.mcp.client.McpToolInfo;
 import com.szh.model.ModelFactory;
 import com.szh.store.EventStoreFactory;
 import com.szh.store.StoreEnum;
+import com.szh.trace.TokenTracker;
 import com.szh.tool.ToolRegistry;
 import com.szh.tool.store.FileSnapshotStore;
 import com.szh.tool.tools.meta.AgentMode;
@@ -102,12 +103,14 @@ public class Repl {
         Repl repl = new Repl(mode, resumeSession);
         if (oneShot != null) {
             // 非交互一次性执行：跑完即退出，便于脚本/管道集成
+            long startMs = System.currentTimeMillis();
             String res = repl.ask(oneShot);
             if (!repl.streamEnabled) {
                 System.out.println(res);
             }
             // 会话到此结束：触发一次 session_end 反思（若策略开启），再退出
             repl.reflectOnSessionEnd();
+            repl.emitMetricsSummary(System.currentTimeMillis() - startMs);
             return;
         }
         repl.start();
@@ -224,6 +227,35 @@ public class Repl {
         } catch (RuntimeException e) {
             log.warn("session-end reflection failed for {}", sessionId, e);
         }
+    }
+
+    /**
+     * --prompt 一次性执行结束时打印一行机器可读用量摘要（input/output/total/cached token、轮次、耗时），
+     * 供外部评测（Terminal-Bench / Harbor 适配器等）从 stdout 解析回填。仅当 -Dopenagent.metrics.summary=true
+     * 时输出，正常交互会话不受影响。
+     */
+    public void emitMetricsSummary(long elapsedMs) {
+        if (!ConfigUtil.getBoolean("openagent.metrics.summary", false)) {
+            return;
+        }
+        TokenTracker t = activeTokenTracker();
+        if (t == null) {
+            System.out.println("OPENAGENT_METRICS input=0 output=0 total=0 cached=0 rounds=0 elapsed_ms=" + elapsedMs);
+            return;
+        }
+        System.out.println("OPENAGENT_METRICS input=" + t.getCumulativePromptTokens()
+                + " output=" + t.getCumulativeCompletionTokens()
+                + " total=" + t.getCumulativeTotalTokens()
+                + " cached=" + t.getCumulativeCachedTokens()
+                + " rounds=" + t.getPerStepUsages().size()
+                + " elapsed_ms=" + elapsedMs);
+    }
+
+    /** 取当前生效运行时（chat/response）的 token 统计器，未初始化则返回 null。 */
+    private TokenTracker activeTokenTracker() {
+        return mode == Mode.CHAT
+                ? (chatRuntime != null ? chatRuntime.getTokenTracker() : null)
+                : (responseRuntime != null ? responseRuntime.getTokenTracker() : null);
     }
 
     /**
