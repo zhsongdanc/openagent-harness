@@ -75,7 +75,7 @@ public class LoopGuard {
      * 紧接着重跑相同命令（如改完代码再跑同一条测试）属 fix-then-retry，不应判为死循环。
      */
     private static final Set<String> PROGRESS_CODES = Set.of(
-            "write_file", "edit_file", "git_add", "git_commit", "git_push");
+            "write_file", "edit_file", "delete_file", "git_add", "git_commit", "git_push");
 
     private final boolean enabled;
     private final int maxConsecutiveFailures;

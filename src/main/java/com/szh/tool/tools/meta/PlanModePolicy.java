@@ -32,7 +32,7 @@ public final class PlanModePolicy {
      * PLAN 模式下禁用的写入/变更类工具 code（只读检索与元工具不在此列，照常可用）
      */
     private static final Set<String> MUTATING_CODES = Set.of(
-            "write_file", "edit_file",
+            "write_file", "edit_file", "delete_file",
             "git_add", "git_commit", "git_push",
             "mvn",
             "remember", "forget",

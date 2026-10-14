@@ -8,6 +8,7 @@ import com.szh.memory.LongTermMemory;
 import com.szh.tool.tools.QueryLocationTool;
 import com.szh.tool.tools.QueryWeatherTool;
 import com.szh.tool.tools.ReadToolResultTool;
+import com.szh.tool.tools.file.DeleteFileTool;
 import com.szh.tool.tools.file.EditFileTool;
 import com.szh.tool.tools.file.ReadFileTool;
 import com.szh.tool.tools.file.RepoMapTool;
@@ -125,7 +126,13 @@ public class ToolRegistry {
         if (!ConfigUtil.getBoolean("file.tools.enabled", true)) {
             return List.of();
         }
-        return List.of(new ReadFileTool(), new WriteFileTool(), new EditFileTool(), new RepoMapTool());
+        List<Tool> tools = new ArrayList<>(List.of(
+                new ReadFileTool(), new WriteFileTool(), new EditFileTool(), new RepoMapTool()));
+        // delete_file 是破坏性操作，单独给一个开关，便于只关删除而保留读写
+        if (ConfigUtil.getBoolean("file.delete.enabled", true)) {
+            tools.add(new DeleteFileTool());
+        }
+        return tools;
     }
 
     /**

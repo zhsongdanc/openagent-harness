@@ -24,7 +24,7 @@ public class VerifyGate {
      * 只收文件写与 git 写（真正改动仓库内容的），mvn/remember 等不计入——它们不产生需要重新验证的代码变更。
      */
     private static final Set<String> DIRTY_CODES = Set.of(
-            "write_file", "edit_file", "git_add", "git_commit", "git_push");
+            "write_file", "edit_file", "delete_file", "git_add", "git_commit", "git_push");
 
     private final VerifyConfig config;
 

@@ -58,7 +58,7 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
   给本地编码助手补上「能不能自己确认改对了」的核心能力——拦截「模型宣布完成」这一刻，跑项目声明的验证命令（编译/测试/lint），
   不通过就把失败输出结构化塞回上下文强制继续修，通过才真正收尾。把「靠 prompt 求模型记得跑测试」升级为**框架级硬闸门**。
 - **触发条件**：两条运行时（`AgentRuntime` FINAL_ANSWER 分支 / `AgentResponseRuntime` `!anyToolCall` 分支）各在 run 开始建一个 run 级 `VerifyGate` 实例，
-  每次执行工具调用后 `markDirty(toolCode)`——命中写入类工具（`write_file`/`edit_file`/`git_add`/`git_commit`/`git_push`）即置脏。
+  每次执行工具调用后 `markDirty(toolCode)`——命中写入类工具（`write_file`/`edit_file`/`delete_file`/`git_add`/`git_commit`/`git_push`）即置脏。
   收尾分支调 `shouldVerify()`：闸门**武装**（`enabled` 且 `commands` 非空）且（未开 `onlyWhenDirty` 或本 run 确实改过代码）才验证，纯问答/只读任务自动跳过、不做无谓编译。
 - **配置来源与优先级**：`VerifyConfigLoader.load(workspace)` 分层装配——①基线从 `application.properties` 读调优旋钮
   （`agent.verify.enabled/maxFixRounds/timeoutSeconds/onlyWhenDirty`）；②项目级 `{workspace}/.openagent/verify.json` **优先于**全局
@@ -90,9 +90,13 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
   （`model.stream.enabled`/`model.stream.printReasoning`）；**流式路径不重试**（增量已回放无法收回），阻塞路径仍走 RetryExecutor。
 - **文件工具**（`com.szh.tool.tools.file`，开关 `file.tools.enabled`）：`read_file`（带行号+offset/limit 分页）、
   `write_file`（全量创建/覆盖）、`edit_file`（精确字符串替换，old_text 必须唯一否则拒绝，支持 replace_all，结果回显 LCS 统一 diff）、
-  `repo_map`（目录树+Java 符号抽取，自动剪枝 .git/target/node_modules 等噪音目录）。
+  `repo_map`（目录树+Java 符号抽取，自动剪枝 .git/target/node_modules 等噪音目录）、
+  `delete_file`（删单个文件，破坏性操作，单独开关 `file.delete.enabled`）。
   路径安全由 `FileToolSupport` 统一把关：复用 `PathGuard.resolve`（含符号链接规范化），读写默认仅限工作区内，
   `file.tools.allowOutside=true` 才放开到策略允许根；**读校验不能用 writableRoots 当边界**（含 /tmp 等，临时目录工作区会被穿越）。
+  `delete_file` 在工具层加三道硬限制：①路径必须在 repo root 之内（以 `SandboxPolicy.workspaceRoot` 为边界，**不受** `file.tools.allowOutside` 放开）；
+  ②禁止目录删除（只删单文件）；③敏感删除人工确认——命中大文件（`file.delete.confirm.minBytes`）或特定后缀/文件名（`file.delete.confirm.suffixes`，默认 `.java,pom.xml`）时复用 `ConsoleQuestionPrompter` 走 `ask_user_question` 同款交互征求确认，
+  临时/测试文件命中豁免正则（`file.delete.confirm.exempt.regex`）自动放行；非交互（EOF）按 `file.delete.confirm.autoApprove` 兜底（默认拒绝）。删除前 `captureSnapshot` 拍 before-image，`/rewind` 可还原误删。
 - **并行工具调用**（`com.szh.agent.ParallelToolExecutor`，两条运行时共用）：一轮内多个调用并发执行
   （`agent.parallel.maxThreads`，单轮总超时 `agent.parallel.timeoutSeconds`），事件严格按「全部 CallToolStarted →
   并发执行 → 全部 CallToolFinished（按调用原序）」落库，满足 Responses API 分组约束；`AssistantMessageItem.toolCalls`
@@ -167,7 +171,7 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
 - **工具如何拿到落库入口**：工具只拿得到 `ToolContext`，故约定运行时在 `ParallelToolExecutor.runSingle` 构造 `ToolContext` 时注入
   `AgentState` + `turnId` + `round`（新增字段），元工具经 `MetaToolSupport.emit(ctx, event)` 落库；脱离运行时的单测直调时 `AgentState` 为 null，`emit` 静默跳过、内存 store 仍更新，保证工具可独立测试。
 - **PLAN 模式（`switch_mode`）**：会话级模式，两条运行时（`AgentRuntime`/`AgentResponseRuntime`）**每轮开头**读 `AgentModeStore`，
-  经 `PlanModePolicy` 施加软硬双约束——①`effectiveTools` 用**拒绝名单**（write_file/edit_file/git_add/git_commit/git_push/mvn/remember/forget/dispatch_subagent）
+  经 `PlanModePolicy` 施加软硬双约束——①`effectiveTools` 用**拒绝名单**（write_file/edit_file/delete_file/git_add/git_commit/git_push/mvn/remember/forget/dispatch_subagent）
   剔除写入类工具，只留只读检索 + 元工具；②`decorateContext` 往上下文副本的 system prompt 追加规划契约（只改副本不动真相源）。切换**下一轮生效**，无需重启会话。
   用拒绝名单而非白名单：默认放行、仅剔已知写入工具，新增只读工具无需改这里，底层仍有权限闸门 + 沙箱兜底。用户也可在 REPL 用 `/mode plan|normal` 切换（写同一份 store + 落同一事件）。
 - **ask_user_question**：结构化多选/单选问询，交互复用 `ConsoleQuestionPrompter` 读 stdin（沿用 `ConsolePermissionPrompter` 约定：提示走 stderr、
