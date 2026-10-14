@@ -7,6 +7,7 @@ import com.szh.context.dto.ToolMessageItem;
 import com.szh.context.dto.UserMessageItem;
 import com.szh.event.CallToolFinishedEvent;
 import com.szh.event.CallToolStartedEvent;
+import com.szh.event.ContextCompactedEvent;
 import com.szh.event.Event;
 import com.szh.event.EventEnum;
 import com.szh.event.ModelResponseEvent;
@@ -94,6 +95,7 @@ public final class EventJsonCodec {
             case MODE_SWITCHED -> new ModeSwitchedEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
                     JsonUtil.parse(payload, String.class));
             case VERIFICATION -> parseVerification(s, payload);
+            case CONTEXT_COMPACTED -> parseCompacted(s, payload);
         };
         event.setId(s.eventId());
         event.setTimestamp(s.timestamp());
@@ -122,6 +124,24 @@ public final class EventJsonCodec {
         return new VerificationEvent(s.sessionId(), s.runId(), s.turnId(), s.round(), passed,
                 cmd == null ? null : String.valueOf(cmd), exitCode,
                 detail == null ? null : String.valueOf(detail));
+    }
+
+    /**
+     * 压缩检查点负载反序列化：payload 是 {@code {summary, keepRecentCount, beforeMessages, afterMessages}} 的 Map；
+     * 空/非法时安全兜底（summary 为 null 时 {@code AgentState.collapseCompacted} 会原样跳过，不破坏重建）
+     */
+    private static Event parseCompacted(SerializedEvent s, String payload) {
+        Map<String, Object> data = JsonUtil.parse(payload, new TypeReference<Map<String, Object>>() {
+        });
+        if (data == null) {
+            data = Map.of();
+        }
+        Object summary = data.get("summary");
+        int keepRecentCount = data.get("keepRecentCount") instanceof Number n ? n.intValue() : 0;
+        int beforeMessages = data.get("beforeMessages") instanceof Number n ? n.intValue() : 0;
+        int afterMessages = data.get("afterMessages") instanceof Number n ? n.intValue() : 0;
+        return new ContextCompactedEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
+                summary == null ? null : String.valueOf(summary), keepRecentCount, beforeMessages, afterMessages);
     }
 
     /**

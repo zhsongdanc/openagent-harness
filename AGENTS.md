@@ -27,6 +27,11 @@ openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运
 - **DeepSeek Responses API 分组约束**：同一轮内所有 `function_call` 必须连续排列、
   `function_call_output` 统一跟在其后，交错会触发 400。
 - **上下文压缩**：单一阈值 `compaction.threshold`，超阈值先 L0 规则压缩、仍超再升级 L1 LLM 摘要。
+  **压缩检查点持久化**：L1 摘要既花 LLM 调用又非确定性，故压缩发生时落一条 `ContextCompactedEvent`（`EventEnum.CONTEXT_COMPACTED`，
+  **不继承 `MessageEvent`**、不进增量 `modelContext`，但被 `AgentState.deriveMessages()` **特判消费**）把摘要正文与保留尾部条数固化进事件流；
+  `resume()` 遇到该事件即把此前累积历史折叠为 `[system, 摘要, 尾部 keepRecentCount 条]`，直接重建到运行期压缩态、**无需再调 LLM 重压**（多次压缩按事件顺序增量叠加）。
+  L0（`StepCompactor`）是确定性零成本规则压缩，**不落检查点**——恢复后重跑即得相同结果。`maybeCompact` 返回 `CompactionResult`
+  （`unchanged`/`l0Only`/`summarized`）携带 `isChanged`/`isSummarized` 与摘要，供两条运行时决定是否 `replaceModelContext` + 落检查点。
 - **工具结果外存**：超阈值的工具输出落盘到 `{workspace}/.agent-data/tool-results/{sessionId}/{callId}.txt`，
   上下文只保留引用存根，模型用 `read_tool_result` 分页读取；`read_tool_result` 自身输出必须豁免落盘（否则无限套娃）。
 

@@ -6,6 +6,7 @@ import com.szh.context.dto.ToolMessageItem;
 import com.szh.context.dto.UserMessageItem;
 import com.szh.event.CallToolFinishedEvent;
 import com.szh.event.CallToolStartedEvent;
+import com.szh.event.ContextCompactedEvent;
 import com.szh.event.Event;
 import com.szh.event.EventEnum;
 import com.szh.event.ModelResponseEvent;
@@ -151,6 +152,11 @@ public final class TraceReplay {
                         : "[VERIFY ✗] " + nvl(v.getCommand()) + "  → "
                             + clip(v.getDetail() != null ? v.getDetail() : ("exitCode=" + v.getExitCode()));
             }
+            case CONTEXT_COMPACTED -> {
+                ContextCompactedEvent c = (ContextCompactedEvent) e;
+                yield "[COMPACT] 上下文压缩 " + c.getBeforeMessages() + "→" + c.getAfterMessages()
+                        + " 条（保留尾部 " + c.getKeepRecentCount() + " 条）: " + clip(c.getSummary());
+            }
         };
     }
 
@@ -248,6 +254,7 @@ public final class TraceReplay {
                 .append(".DONE .tag{color:#ff6b81;}.RUNSTART .tag{color:#8b93a7;}")
                 .append(".TODO .tag{color:#ffd479;}.MODE .tag{color:#79e0ff;}")
                 .append(".VERIFY .tag{color:#ff9f43;}")
+                .append(".COMPACT .tag{color:#c0a3ff;}")
                 .append("details>summary{cursor:pointer;color:#8b93a7;}")
                 .append("</style></head><body>");
         sb.append("<header><h1>Trace Replay</h1><div class=\"meta\">session=")
@@ -358,6 +365,13 @@ public final class TraceReplay {
                         ? "验证通过"
                         : nvl(v.getCommand()) + "\n"
                             + (v.getDetail() != null ? v.getDetail() : ("exitCode=" + v.getExitCode()));
+            }
+            case CONTEXT_COMPACTED -> {
+                ContextCompactedEvent c = (ContextCompactedEvent) e;
+                cls = "COMPACT";
+                tag = "COMPACT";
+                body = "上下文压缩 " + c.getBeforeMessages() + "→" + c.getAfterMessages()
+                        + " 条（保留尾部 " + c.getKeepRecentCount() + " 条）\n" + nvl(c.getSummary());
             }
             default -> {
                 cls = "RUNSTART";

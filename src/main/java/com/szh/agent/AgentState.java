@@ -6,6 +6,7 @@ import com.szh.context.dto.MessageItem;
 import com.szh.context.dto.SystemMessageItem;
 import com.szh.context.dto.ToolMessageItem;
 import com.szh.event.Event;
+import com.szh.event.ContextCompactedEvent;
 import com.szh.event.MessageEvent;
 import com.szh.store.EventStore;
 import com.szh.utils.CommonUtils;
@@ -145,9 +146,38 @@ public class AgentState {
         for (Event event : events) {
             if (event instanceof MessageEvent messageEvent) {
                 context.add(messageEvent.getMessageItem());
+            } else if (event instanceof ContextCompactedEvent compactedEvent) {
+                // 压缩检查点：把此前累积的历史折叠为「摘要 + 尾部若干条」，
+                // 直接重建到运行期压缩后状态，无需再调 LLM 重压
+                context = collapseCompacted(context, compactedEvent);
             }
         }
         return context;
+    }
+
+    /**
+     * 应用压缩检查点：把已累积的 {@code [system, m1..mN]} 折叠为
+     * {@code [system, summary, 尾部 keepRecentCount 条]}，与运行期 {@code LlmCompactor} 产物结构一致。
+     * <p>
+     * 尾部按条数截取即可逐字还原：L0 保留最近 KEEP_RECENT 条不变、L1 的 recentMessages 就是这批原文，
+     * 事件日志里对应的 MessageEvent 保真度相同。多次压缩时本方法按事件顺序增量叠加，后一个检查点
+     * 会在前一个的折叠结果上继续折叠。summary 为 null（异常兜底）时原样返回，不改变上下文。
+     */
+    private List<MessageItem> collapseCompacted(List<MessageItem> context, ContextCompactedEvent compactedEvent) {
+        String summary = compactedEvent.getSummary();
+        if (summary == null || context.isEmpty()) {
+            return context;
+        }
+        MessageItem system = context.get(0);
+        int bodySize = context.size() - 1;
+        int keep = Math.max(0, Math.min(compactedEvent.getKeepRecentCount(), bodySize));
+        List<MessageItem> rebuilt = new ArrayList<>();
+        rebuilt.add(system);
+        rebuilt.add(new SystemMessageItem(summary));
+        rebuilt.addAll(context.subList(context.size() - keep, context.size()));
+        log.info("AgentState: 应用压缩检查点，上下文 {} -> {} 条（保留尾部 {} 条）",
+                context.size(), rebuilt.size(), keep);
+        return rebuilt;
     }
 
     public int getTurnId() {

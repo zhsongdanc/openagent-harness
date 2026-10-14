@@ -5,6 +5,7 @@ import com.szh.agent.verify.VerifyPolicy;
 import com.szh.agent.verify.VerifyResult;
 import com.szh.context.ContextBuilder;
 import com.szh.context.compaction.ContextCompactionManager;
+import com.szh.context.compaction.CompactionResult;
 import com.szh.context.compaction.ModelSummarizer;
 import com.szh.context.compaction.StepCompactor;
 import com.szh.context.dto.*;
@@ -118,10 +119,16 @@ public class AgentRuntime {
             // 上下文压缩检查：在调用 model 前判断是否需要压缩
             int ctxTokens = StepCompactor.estimateTotalTokens(agentState.getModelContext());
             log.info("[Round {}] 上下文状态: 消息数={}, 估算tokens={}", round, agentState.getModelContext().size(), ctxTokens);
-            List<MessageItem> compacted = compactionManager.maybeCompact(new ArrayList<>(agentState.getModelContext()));
-            if (compacted.size() != agentState.getModelContext().size()) {
-                log.info("[Round {}] >>> 压缩已执行: 消息数 {} -> {} <<<", round, agentState.getModelContext().size(), compacted.size());
-                agentState.replaceModelContext(compacted);
+            int beforeCompaction = agentState.getModelContext().size();
+            CompactionResult cr = compactionManager.maybeCompact(new ArrayList<>(agentState.getModelContext()));
+            if (cr.isChanged()) {
+                log.info("[Round {}] >>> 压缩已执行: 消息数 {} -> {} <<<", round, beforeCompaction, cr.getMessages().size());
+                agentState.replaceModelContext(cr.getMessages());
+                // L1 摘要落检查点事件：使 resume 能直接折叠重建到压缩态，无需再调 LLM 重压
+                if (cr.isSummarized()) {
+                    agentState.applyEvent(new ContextCompactedEvent(sessionId, runId, turnId, round,
+                            cr.getSummary(), cr.getKeepRecentCount(), beforeCompaction, cr.getMessages().size()));
+                }
                 compactionHappened = true;
             }
 

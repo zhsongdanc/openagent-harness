@@ -55,11 +55,12 @@ public class LlmCompactor {
      * 执行 L1 LLM 压缩。
      *
      * @param messages 当前上下文消息列表（已经过 L0 压缩）
-     * @return 压缩后的消息列表：[systemPrompt, summaryMessage, ...recentMessages]
+     * @return 压缩结果：成功时为 {@code summarized}（携带摘要正文与保留尾部条数）；
+     *         各 bail 分支返回 {@code l0Only(原列表)} 表示未产生摘要，由上层回退到 L0 结果
      */
-    public List<MessageItem> compact(List<MessageItem> messages) {
+    public CompactionResult compact(List<MessageItem> messages) {
         if (messages == null || messages.size() <= KEEP_RECENT + 1) {
-            return messages;
+            return CompactionResult.l0Only(messages);
         }
 
         // 分离：system prompt + 待压缩历史 + 保留的近期消息
@@ -69,7 +70,7 @@ public class LlmCompactor {
         List<MessageItem> recentMessages = messages.subList(keepStart, messages.size());
 
         if (toCompress.isEmpty()) {
-            return messages;
+            return CompactionResult.l0Only(messages);
         }
 
         // 构建待压缩历史的文本；同时收集其中仍可回读的落盘把手（P0-3）
@@ -91,7 +92,7 @@ public class LlmCompactor {
         String summary = callLlmForSummary(historyText.toString());
         if (summary == null || summary.isEmpty()) {
             log.warn("LlmCompactor: LLM summary failed, falling back to L0 result");
-            return messages;
+            return CompactionResult.l0Only(messages);
         }
 
         // P0-3：把手清单由代码确定性拼接、不经 LLM 改写，避免 result_id 被摘要吃掉导致落盘文件成孤儿
@@ -113,7 +114,8 @@ public class LlmCompactor {
         log.info("LlmCompactor L1: messages {} -> {}, tokens ~{} -> ~{}",
                 messages.size(), result.size(), originalTokens, compressedTokens);
 
-        return result;
+        // 摘要正文与保留尾部条数一并回传，供上层落 ContextCompactedEvent 检查点，使 resume 能逐字还原压缩态
+        return CompactionResult.summarized(result, summaryText.toString(), recentMessages.size());
     }
 
     /**

@@ -53,9 +53,9 @@ public class ContextCompactionManager {
      * 检查是否需要压缩，如需要则渐进式执行：L0 规则压缩 → 如仍超阈值则 L1 LLM 摘要。
      *
      * @param messages 当前上下文消息列表
-     * @return 压缩后的消息列表（可能是原列表）
+     * @return 压缩结果：{@code unchanged}（未触发）/ {@code l0Only}（仅 L0）/ {@code summarized}（L1 产生摘要）
      */
-    public List<MessageItem> maybeCompact(List<MessageItem> messages) {
+    public CompactionResult maybeCompact(List<MessageItem> messages) {
         int currentTokens = tokenTracker.getCurrentContextTokens();
 
         // 如果当前 token 数未知（首次调用），用估算值
@@ -71,7 +71,7 @@ public class ContextCompactionManager {
 
         // 未超过阈值，不压缩
         if (ratio < threshold) {
-            return messages;
+            return CompactionResult.unchanged(messages);
         }
 
         log.info("[Compaction] 触发压缩: ratio={} >= {}, 消息数={}",
@@ -88,20 +88,25 @@ public class ContextCompactionManager {
             if (llmCompactor == null) {
                 log.warn("[Compaction] L0 后 ratio={} 仍 >= 阈值 {}，但 Summarizer 为 null，无法执行 L1 压缩",
                         l0RatioStr, threshold);
-            } else {
-                int l0MsgCount = compacted.size();
-                compacted = llmCompactor.compact(compacted);
-                int l1Tokens = StepCompactor.estimateTotalTokens(compacted);
+                return CompactionResult.l0Only(compacted);
+            }
+            int l0MsgCount = compacted.size();
+            CompactionResult l1 = llmCompactor.compact(compacted);
+            if (l1.isSummarized()) {
+                int l1Tokens = StepCompactor.estimateTotalTokens(l1.getMessages());
                 tokenTracker.recalibrateContextTokens(l1Tokens);
                 log.info("[Compaction] L0+L1 完成: ratio {} -> {} -> {}, 消息数 {} -> {} -> {}",
                         ratioStr, l0RatioStr, String.format("%.2f", (double) l1Tokens / contextWindow),
-                        messages.size(), l0MsgCount, compacted.size());
+                        messages.size(), l0MsgCount, l1.getMessages().size());
+                return l1;
             }
-        } else {
-            log.info("[Compaction] L0 完成: ratio {} -> {}, 消息数 {} -> {}",
-                    ratioStr, l0RatioStr, messages.size(), compacted.size());
+            // L1 未产生有效摘要（如 LLM 调用失败）：回退到 L0 结果，不落检查点
+            log.warn("[Compaction] L1 未产生摘要，回退 L0 结果: ratio {} -> {}", ratioStr, l0RatioStr);
+            return CompactionResult.l0Only(compacted);
         }
 
-        return compacted;
+        log.info("[Compaction] L0 完成: ratio {} -> {}, 消息数 {} -> {}",
+                ratioStr, l0RatioStr, messages.size(), compacted.size());
+        return CompactionResult.l0Only(compacted);
     }
 }

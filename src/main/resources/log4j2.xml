@@ -1,13 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="WARN">
+    <!-- 日志落盘目录：默认 ~/.openagent/logs，与 memory.db / sessions 同根，集中管理不污染业务仓库。
+         可用启动参数 -Dopenagent.log.dir=/path/to/logs 覆盖（launcher 也可注入）。 -->
+    <Properties>
+        <Property name="LOG_DIR">${sys:openagent.log.dir:-${sys:user.home}/.openagent/logs}</Property>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss} [%t] %-5level %logger{36} - %msg%n</Property>
+    </Properties>
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
-            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss} [%t] %-5level %logger{36} - %msg%n"/>
+            <PatternLayout pattern="${LOG_PATTERN}"/>
         </Console>
+        <!-- 滚动文件：单文件超 50MB 或跨天即滚动，最多保留 30 个历史文件 / 总量 1GB 后淘汰最旧的。
+             printTraceByRunId 这类多行日志会完整写入文件，不受控制台 grep/流式输出干扰。 -->
+        <RollingFile name="File"
+                     fileName="${LOG_DIR}/openagent.log"
+                     filePattern="${LOG_DIR}/openagent-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="50MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30">
+                <Delete basePath="${LOG_DIR}" maxDepth="1">
+                    <IfFileName glob="openagent-*.log.gz"/>
+                    <IfAny>
+                        <IfAccumulatedFileSize exceeds="1 GB"/>
+                        <IfLastModified age="30d"/>
+                    </IfAny>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
     </Appenders>
     <Loggers>
         <Root level="INFO">
             <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
         </Root>
     </Loggers>
 </Configuration>

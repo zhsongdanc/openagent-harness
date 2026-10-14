@@ -15,6 +15,7 @@ public enum EventEnum {
     TODO_UPDATED,
     MODE_SWITCHED,
     VERIFICATION,
+    CONTEXT_COMPACTED,
     RUN_COMPLETED,
     ;
 }
