@@ -18,7 +18,7 @@ public class GitPushTool extends AbstractGitWorkflowTool {
 
     private static final ToolDefinition TOOL_DEFINITION = definition(
             CODE,
-            "推送本地提交到远端（git push）。remote 缺省 origin，branch 缺省当前分支；setUpstream=true 时用 -u 建立分支跟踪。这是联网写操作，可能触发权限确认",
+            "推送本地提交到远端（git push）。remote 缺省 origin，branch 缺省当前分支；setUpstream=true 时用 -u 建立分支跟踪。这是联网写操作，可能触发权限确认。使用本工具时先检查是否是git仓库，如果不是不能使用本工具。",
             "{\"type\":\"object\",\"properties\":{\"remote\":{\"type\":\"string\",\"description\":\"远端名，缺省 origin\"},\"branch\":{\"type\":\"string\",\"description\":\"要推送的分支名，缺省当前分支\"},\"setUpstream\":{\"type\":\"boolean\",\"description\":\"true 时加 -u 建立上游跟踪\"}},\"required\":[]}");
 
     @Override

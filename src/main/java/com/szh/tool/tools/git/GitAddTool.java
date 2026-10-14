@@ -17,7 +17,7 @@ public class GitAddTool extends AbstractGitWorkflowTool {
 
     private static final ToolDefinition TOOL_DEFINITION = definition(
             CODE,
-            "把改动加入暂存区（git add）。传 paths 暂存指定文件/目录（多个用空格分隔），或 all=true 暂存全部改动（git add -A）。二者至少给一个",
+            "把改动加入暂存区（git add）。传 paths 暂存指定文件/目录（多个用空格分隔），或 all=true 暂存全部改动（git add -A）。二者至少给一个。使用本工具时先检查是否是git仓库，如果不是不能使用本工具。",
             "{\"type\":\"object\",\"properties\":{\"paths\":{\"type\":\"string\",\"description\":\"要暂存的路径，多个用空格分隔，如 src/main/java pom.xml\"},\"all\":{\"type\":\"boolean\",\"description\":\"true 时暂存全部改动，等价 git add -A\"}},\"required\":[]}");
 
     @Override

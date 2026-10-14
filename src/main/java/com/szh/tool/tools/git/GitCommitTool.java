@@ -24,7 +24,7 @@ public class GitCommitTool extends AbstractGitWorkflowTool {
 
     private static final ToolDefinition TOOL_DEFINITION = definition(
             CODE,
-            "提交暂存区改动（git commit -m）。message 必填；all=true 时自动带上已跟踪文件的改动(-a)；amend=true 修改上一次提交。提交前请确保已 git_add",
+            "提交暂存区改动（git commit -m）。message 必填；all=true 时自动带上已跟踪文件的改动(-a)；amend=true 修改上一次提交。提交前请确保已 git_add。使用本工具时先检查是否是git仓库，如果不是不能使用本工具。",
             "{\"type\":\"object\",\"properties\":{\"message\":{\"type\":\"string\",\"description\":\"提交信息，必填\"},\"all\":{\"type\":\"boolean\",\"description\":\"true 时等价 -a，自动暂存并提交已跟踪文件的改动\"},\"amend\":{\"type\":\"boolean\",\"description\":\"true 时修改上一次提交（--amend）\"}},\"required\":[\"message\"]}");
 
     @Override
