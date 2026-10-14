@@ -21,6 +21,7 @@ import com.szh.tool.tools.memory.ForgetTool;
 import com.szh.tool.tools.memory.RecallTool;
 import com.szh.tool.tools.memory.RememberTool;
 import com.szh.tool.tools.meta.AskUserQuestionTool;
+import com.szh.tool.tools.meta.ExitPlanModeTool;
 import com.szh.tool.tools.meta.SwitchModeTool;
 import com.szh.tool.tools.meta.TodoWriteTool;
 import com.szh.tool.tools.subagent.DispatchSubAgentTool;
@@ -159,15 +160,15 @@ public class ToolRegistry {
     }
 
     /**
-     * 元工具（todo_write / ask_user_question / switch_mode）：agent 自组织能力的基础——
-     * 自己维护多步任务清单、结构化问询用户、在 NORMAL/PLAN 模式间切换。
+     * 元工具（todo_write / ask_user_question / switch_mode / exit_plan_mode）：agent 自组织能力的基础——
+     * 自己维护多步任务清单、结构化问询用户、在 NORMAL/PLAN 模式间切换，并在规划完成后提交方案征求批准。
      * meta.tools.enabled=false 可整体关闭退回纯执行型 agent。
      */
     private List<Tool> metaTools() {
         if (!ConfigUtil.getBoolean("meta.tools.enabled", true)) {
             return List.of();
         }
-        return List.of(new TodoWriteTool(), new AskUserQuestionTool(), new SwitchModeTool());
+        return List.of(new TodoWriteTool(), new AskUserQuestionTool(), new SwitchModeTool(), new ExitPlanModeTool());
     }
 
     /**

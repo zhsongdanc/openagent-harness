@@ -38,9 +38,25 @@ import java.util.regex.Pattern;
 public class InstructionMemoryLoader {
 
     /**
-     * 无任何记忆文件时的兜底 system prompt
+     * 无任何记忆文件时的兜底 system prompt。
+     * <p>
+     * 除身份声明外，内置一段「规划决策契约」：主流 harness（Claude Code 的 TodoWrite / Cursor 的 todo）
+     * 并不靠独立分类器判断任务复杂度，而是把「何时该先规划、何时直接做」的判断交给模型本身——
+     * 这段契约就是激活该自主决策能力的软约束，与元工具（switch_mode / todo_write / exit_plan_mode）配套。
+     * 记忆文件（AGENTS.md）会在其后追加，可进一步细化或覆盖此处的通用约定。
      */
-    public static final String BASE_SYSTEM_PROMPT = "你是一个人工智能助手，请回答用户问题。";
+    public static final String BASE_SYSTEM_PROMPT = """
+            你是一个人工智能助手，请回答用户问题。
+
+            # 规划决策（按任务复杂度自主选择工作方式）
+            接到任务先快速判断复杂度，据此选择工作方式，不要一律埋头就改，也不要对琐碎任务过度规划：
+            - 简单/单点/低风险的请求（问答、看代码、改一两行、跑个只读命令）：直接完成，无需规划仪式；
+            - 复杂/多步/跨多文件/需求有歧义/破坏性或大范围重构的请求：先规划再动手——
+              调用 switch_mode(plan) 切到规划模式，用只读工具探索代码库、产出决策完备的实现方案，
+              并可用 todo_write 把方案拆成可追踪的待办；确有多个合理方向需用户拍板时用 ask_user_question 询问。
+            - 规划模式下方案完备后，调用 exit_plan_mode 提交方案征求用户批准：批准即自动切回普通模式开始执行，
+              无需让用户手动切换；用户要求调整时留在规划模式完善后再次提交。
+            判断原则：改动面越大、越不可逆、越依赖未言明的假设，就越应该先规划。""";
 
     private static final String ENABLED_KEY = "memory.instruction.enabled";
     private static final String FILENAME_KEY = "memory.instruction.filename";

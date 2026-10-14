@@ -49,7 +49,8 @@ public final class PlanModePolicy {
             - 写入、提交、构建、删除类能力已被禁用，不要尝试绕过；
             - 产出一份决策完备的实现方案：要改哪些文件、每处怎么改、涉及的关键约束与取舍、验证方式；
             - 方案里若存在需要用户拍板的分叉，用 ask_user_question 提问；
-            - 待用户认可后，再由用户切回 NORMAL 模式执行（你可提示用户 /mode normal）。
+            - 方案完备后调用 exit_plan_mode 提交方案征求用户批准：批准即自动切回 NORMAL 开始执行，
+              无需让用户手动 /mode normal；用户要求调整时留在本模式完善后再次提交。
             用 todo_write 把方案拆成可追踪的待办清单。""";
 
     private PlanModePolicy() {

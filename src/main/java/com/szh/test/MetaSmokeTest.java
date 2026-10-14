@@ -15,6 +15,7 @@ import com.szh.tool.tools.meta.AgentMode;
 import com.szh.tool.tools.meta.AgentModeStore;
 import com.szh.tool.tools.meta.AskUserQuestionTool;
 import com.szh.tool.tools.meta.ConsoleQuestionPrompter;
+import com.szh.tool.tools.meta.ExitPlanModeTool;
 import com.szh.tool.tools.meta.PlanModePolicy;
 import com.szh.tool.tools.meta.Question;
 import com.szh.tool.tools.meta.SwitchModeTool;
@@ -27,13 +28,14 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 元工具（todo_write / ask_user_question / switch_mode）冒烟验证（无测试框架，按项目惯例 main 直跑，
+ * 元工具（todo_write / ask_user_question / switch_mode / exit_plan_mode）冒烟验证（无测试框架，按项目惯例 main 直跑，
  * 注入 Fake 问询器与进程内事件存储，不依赖真实模型 API / stdin）：
  * <ol>
  *   <li>todo_write：整体替换 / merge 增量、状态归一化、TodoStore 渲染、TodoUpdatedEvent 落库；</li>
  *   <li>事件编解码：TodoUpdatedEvent / ModeSwitchedEvent 经 EventJsonCodec 往返不失真；</li>
  *   <li>ask_user_question：入参解析、结构化回执、非交互兜底；</li>
  *   <li>switch_mode + PlanModePolicy：模式写入 AgentModeStore，PLAN 下剔除写入类工具、保留只读与元工具。</li>
+ *   <li>exit_plan_mode：方案审批——批准切回 NORMAL 并落事件、拒绝/非交互留在 PLAN。</li>
  * </ol>
  *
  * @author demussong
@@ -59,6 +61,7 @@ public class MetaSmokeTest {
         testEventCodecRoundTrip();
         testAskUserQuestion();
         testSwitchModeAndPlanPolicy();
+        testExitPlanMode();
         testRegistryWiring();
 
         log.info("====== 元工具冒烟结果: passed={}, failed={} ======", PASSED.get(), FAILED.get());
@@ -189,6 +192,53 @@ public class MetaSmokeTest {
         check("registry 注册 todo_write", registry.getToolByCode(TodoWriteTool.CODE) != null);
         check("registry 注册 ask_user_question", registry.getToolByCode(AskUserQuestionTool.CODE) != null);
         check("registry 注册 switch_mode", registry.getToolByCode(SwitchModeTool.CODE) != null);
+        check("registry 注册 exit_plan_mode", registry.getToolByCode(ExitPlanModeTool.CODE) != null);
+        // PLAN 模式下 exit_plan_mode 属元工具、非写入类，必须保留（否则无法提交审批退出规划）
+        String session = "meta-plan-exit-session";
+        AgentModeStore.get().set(session, AgentMode.PLAN);
+        check("PLAN 保留 exit_plan_mode", PlanModePolicy.effectiveTools(registry.getTools(), session)
+                .stream().anyMatch(t -> t.getCode().equals(ExitPlanModeTool.CODE)));
+        AgentModeStore.get().clear(session);
+    }
+
+    /**
+     * exit_plan_mode：批准即切回 NORMAL 并落 ModeSwitchedEvent；拒绝/反馈留在 PLAN；非交互不擅自切换；
+     * NORMAL 下调用直接回报无需退出。
+     */
+    private static void testExitPlanMode() {
+        MemoryEventStore store = new MemoryEventStore();
+        AgentState state = new AgentState(store);
+        String session = "meta-exit-plan-session";
+
+        // NORMAL 下调用：无需退出
+        AgentModeStore.get().set(session, AgentMode.NORMAL);
+        ExitPlanModeTool inNormal = new ExitPlanModeTool(new FakePrompter(List.of("批准并开始执行")));
+        check("NORMAL 下 exit_plan_mode 回报无需退出",
+                inNormal.execute(ctx(state, session, "{\"plan\":\"x\"}")).contains("不处于 PLAN"));
+
+        // PLAN + 批准：切回 NORMAL 且落事件
+        AgentModeStore.get().set(session, AgentMode.PLAN);
+        ExitPlanModeTool approve = new ExitPlanModeTool(new FakePrompter(List.of("批准并开始执行")));
+        String approved = approve.execute(ctx(state, session, "{\"plan\":\"改 A.java 与 B.java\"}"));
+        check("批准后切回 NORMAL", AgentModeStore.get().get(session) == AgentMode.NORMAL);
+        check("批准回执提示开始执行", approved.contains("NORMAL"));
+        check("exit_plan_mode 落 ModeSwitchedEvent",
+                store.getEvents(session).stream().anyMatch(e -> e.getType() == EventEnum.MODE_SWITCHED));
+
+        // PLAN + 拒绝（自定义反馈）：留在 PLAN，反馈回灌
+        AgentModeStore.get().set(session, AgentMode.PLAN);
+        ExitPlanModeTool revise = new ExitPlanModeTool(new FakePrompter(List.of("继续修改方案")));
+        String rejected = revise.execute(ctx(state, session, "{\"plan\":\"方案v1\"}"));
+        check("拒绝后仍留在 PLAN", AgentModeStore.get().isPlan(session));
+        check("拒绝回执含用户反馈", rejected.contains("继续修改方案") && rejected.contains("暂未批准"));
+
+        // PLAN + 非交互（null）：不擅自切换，提示输出方案供审阅
+        ExitPlanModeTool nonInteractive = new ExitPlanModeTool(new FakePrompter(null));
+        String fallback = nonInteractive.execute(ctx(state, session, "{\"plan\":\"方案v2\"}"));
+        check("非交互仍留在 PLAN", AgentModeStore.get().isPlan(session));
+        check("非交互提示把方案作为最终答复", fallback.contains("非交互") && fallback.contains("最终答复"));
+
+        AgentModeStore.get().clear(session);
     }
 
     /**
