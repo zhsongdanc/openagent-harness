@@ -344,6 +344,10 @@
         var tokens = round.tokens;
         var ctx = round.contextSize;
         var html = [];
+        // 该轮是否真的发起过模型调用：有 CALL_MODEL_FINISHED 步骤或 TOKEN_USAGE 才算。
+        // round 0 只有 RUN_STARTED + USER_INPUT，从未 model.call，本就没有「送给模型的上下文」，
+        // 若还展示会走事件流重建路径、用查看器自己的 workspace 现拼 system prompt，误导成串了别项目的记忆。
+        var hasModelCall = tokens != null || (round.steps || []).some(function (s) { return s.kind === 'model'; });
         html.push('<div class="round" data-key="' + esc(key) + '" data-run="' + esc(run.runId)
             + '" data-round="' + round.round + '">');
 
@@ -367,14 +371,20 @@
             html.push('<span class="chip">工具 ' + round.tools.length + '</span>');
         }
         roundFlags(round.steps || []).forEach(function (f) { html.push('<span class="chip">' + f + '</span>'); });
-        html.push('<span class="chip ' + (round.hasSnapshot ? 'snap' : 'none') + '">'
-            + (round.hasSnapshot ? '快照' : '事件流重建') + '</span>');
+        // 未发起模型调用的轮次（如 round 0）不标注快照来源：它既无快照也无意义，标了反而误导。
+        if (hasModelCall) {
+            html.push('<span class="chip ' + (round.hasSnapshot ? 'snap' : 'none') + '">'
+                + (round.hasSnapshot ? '快照' : '事件流重建') + '</span>');
+        }
         html.push('</div>');
 
         html.push('<div class="round-body">');
         // ① 上下文：懒加载，点开才请求（一次会话详情响应刻意不带正文，避免几十 MB）
-        html.push('<details class="sec" data-ctx="' + esc(key) + '"><summary>本轮送给模型的上下文</summary>'
-            + '<div class="sec-in"><div class="hint">展开后加载…</div></div></details>');
+        //    仅在该轮真的发起过模型调用时才给入口：round 0 从未 model.call，无上下文可还原。
+        if (hasModelCall) {
+            html.push('<details class="sec" data-ctx="' + esc(key) + '"><summary>本轮送给模型的上下文</summary>'
+                + '<div class="sec-in"><div class="hint">展开后加载…</div></div></details>');
+        }
         // ② 执行步骤
         html.push('<details class="sec" open><summary>执行步骤（' + (round.steps || []).length + '）</summary>'
             + '<div class="sec-in">' + (round.steps || []).map(function (s) { return stepHtml(s); }).join('')
