@@ -1,10 +1,7 @@
 package com.szh.tool.security;
 
+import com.szh.utils.StdinLineReader;
 import lombok.extern.slf4j.Slf4j;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 
 /**
  * @author demussong
@@ -12,6 +9,9 @@ import java.nio.charset.StandardCharsets;
  * <p>
  * 交互不可用（无控制台、输入流 EOF，如批处理或单测）时，退回构造时给定的默认决策，
  * 默认拒绝以保证「无人值守时不做危险操作」的安全底线。
+ * <p>
+ * stdin 统一走 {@link StdinLineReader}：若这里自行 new BufferedReader(System.in)，
+ * 会与 REPL 的两个独立 8KB 缓冲互相吞行，造成预输入丢失/应答串台。
  * @date 2026/9/21
  */
 @Slf4j
@@ -39,19 +39,14 @@ public class ConsolePermissionPrompter implements PermissionPrompter {
         System.err.print("允许执行吗？(y/N): ");
         System.err.flush();
 
-        try {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            String line = reader.readLine();
-            if (line == null) {
-                // EOF：非交互环境
-                log.warn("permission prompt got EOF (non-interactive), fallback to {}", defaultWhenNonInteractive);
-                return defaultWhenNonInteractive;
-            }
-            String answer = line.trim().toLowerCase();
-            return answer.equals("y") || answer.equals("yes");
-        } catch (Exception e) {
-            log.warn("read confirmation failed, fallback to {}", defaultWhenNonInteractive, e);
+        // 共享读取器已将底层异常统一降级为 EOF(null)，这里无需再 try-catch
+        String line = StdinLineReader.shared().readLine();
+        if (line == null) {
+            // EOF：非交互环境
+            log.warn("permission prompt got EOF (non-interactive), fallback to {}", defaultWhenNonInteractive);
             return defaultWhenNonInteractive;
         }
+        String answer = line.trim().toLowerCase();
+        return answer.equals("y") || answer.equals("yes");
     }
 }

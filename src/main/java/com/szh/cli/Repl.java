@@ -26,11 +26,9 @@ import com.szh.tool.tools.meta.TodoStore;
 import com.szh.trace.replay.TraceReplay;
 import com.szh.utils.CommonUtils;
 import com.szh.utils.ConfigUtil;
+import com.szh.utils.StdinLineReader;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -48,8 +46,9 @@ import java.util.List;
  *       默认由 {@code repl.runtime} 决定。</li>
  *   <li><b>流式去重</b>：开启 {@code model.stream.enabled} 时正文已由 {@code ConsoleStreamListener} 逐 token 打到
  *       stdout，REPL 不再重复打印最终结果，避免同一答案出现两遍。</li>
- *   <li><b>与权限确认共存</b>：危险命令确认由 {@code ConsolePermissionPrompter} 直接读 System.in；
- *       REPL 一次只读一行、run 期间不并发读取，故交互场景下二者不会串台。</li>
+ *   <li><b>与权限确认共存</b>：REPL 与危险命令确认（{@code ConsolePermissionPrompter}）的 stdin
+ *       读取统一收敛到 {@code StdinLineReader} 全局唯一缓冲，避免两个独立 reader
+ *       互相吞行导致预输入丢失/应答串台。</li>
  * </ol>
  * 内置命令见 {@link #printHelp()}；也支持 {@code --prompt "..."} 非交互一次性执行便于脚本化。
  * @date 2026/9/21
@@ -69,7 +68,11 @@ public class Repl {
      */
     private static final String PROJECT_MEMORY_KEY = "memory.instruction.project.enabled";
 
-    private final BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+    /**
+     * stdin 行读取统一走全局唯一共享器：若这里独持一个 BufferedReader(System.in)，
+     * 会与权限确认的 reader 各自吞进内部缓冲，预输入的行会随机丢失
+     */
+    private final StdinLineReader in = StdinLineReader.shared();
 
     private final ToolRegistry toolRegistry = new ToolRegistry();
 

@@ -66,6 +66,13 @@ public class LlmCompactor {
         // 分离：system prompt + 待压缩历史 + 保留的近期消息
         MessageItem systemPrompt = messages.get(0);
         int keepStart = Math.max(1, messages.size() - KEEP_RECENT);
+        // 边界对齐：KEEP_RECENT 是按条数硬切的，可能正好落在某轮工具调用内部——
+        // modelContext 里一轮是连续段（若干 function_call 紧跟其 function_call_output），
+        // 若把 function_call 折进摘要、却把对应的 function_call_output 留在尾部，
+        // convertInput 会发出没有配对 call 的孤儿 output，DeepSeek Responses API 直接报 400
+        // （"No tool call found for tool output with call_id ..."）。这里把 keepStart 回退到整轮开头，
+        // 保证尾部要么完整含一整轮、要么完全不含，绝不切在轮中间。
+        keepStart = alignToToolRoundStart(messages, keepStart);
         List<MessageItem> toCompress = messages.subList(1, keepStart);
         List<MessageItem> recentMessages = messages.subList(keepStart, messages.size());
 
@@ -116,6 +123,35 @@ public class LlmCompactor {
 
         // 摘要正文与保留尾部条数一并回传，供上层落 ContextCompactedEvent 检查点，使 resume 能逐字还原压缩态
         return CompactionResult.summarized(result, summaryText.toString(), recentMessages.size());
+    }
+
+    /**
+     * 把压缩边界回退对齐到完整工具调用轮的开头。
+     * <p>
+     * 工具轮在扁平的 modelContext 里表现为连续段：先若干 {@code AssistantMessageItem(callTool)}
+     * （一轮多调用时逐个相邻落库），紧跟其若干 {@code ToolMessageItem}。若 {@code keepStart}
+     * 指向的正是这一段内部（本身是工具项），则向前回退到该段起点，使整轮并入尾部；
+     * 若 {@code keepStart} 落在非工具项（user/system/reasoning 或纯文本 assistant）上，
+     * 说明已是安全边界，原样返回。
+     */
+    private int alignToToolRoundStart(List<MessageItem> messages, int keepStart) {
+        if (keepStart <= 1 || !isToolRoundItem(messages.get(keepStart))) {
+            return keepStart;
+        }
+        int i = keepStart;
+        // 只要前一条仍属于同一轮（call 或 output），继续向前吃掉整轮
+        while (i > 1 && isToolRoundItem(messages.get(i - 1))) {
+            i--;
+        }
+        return i;
+    }
+
+    /**
+     * 是否属于工具调用轮的组成项：function_call（callTool 的 assistant）或 function_call_output（工具结果）。
+     */
+    private boolean isToolRoundItem(MessageItem msg) {
+        return msg instanceof ToolMessageItem
+                || (msg instanceof AssistantMessageItem assistant && assistant.isCallTool());
     }
 
     /**
