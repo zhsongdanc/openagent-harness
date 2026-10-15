@@ -14,6 +14,7 @@ import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.ReasoningEvent;
 import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
+import com.szh.event.TokenUsageEvent;
 import com.szh.event.TodoUpdatedEvent;
 import com.szh.event.UserMessageEvent;
 import com.szh.event.VerificationEvent;
@@ -122,6 +123,7 @@ public final class TraceReplay {
             case RUN_STARTED -> "▶ RUN_STARTED";
             case USER_INPUT -> "[USER] " + clip(userContent(e));
             case MODEL_REASONING -> "[THINK] " + clip(reasoningContent(e));
+            case TOKEN_USAGE -> tokenUsageLine((TokenUsageEvent) e);
             case CALL_MODEL_FINISHED -> "[MODEL] " + clip(modelContent(e));
             case CALL_TOOL_STARTED -> {
                 CallToolStartedEvent s = (CallToolStartedEvent) e;
@@ -176,6 +178,16 @@ public final class TraceReplay {
             sb.append(t.safeStatus().icon()).append(' ').append(nvl(t.getContent()));
         }
         return todos.size() + " 项(" + done + " 完成): " + clip(sb.toString());
+    }
+
+    /**
+     * token 用量事件的单行文本（文本时间线与 HTML 共用），保持"一眼看懂"的紧凑格式
+     */
+    private static String tokenUsageLine(TokenUsageEvent t) {
+        return "[TOKENS] prompt=" + t.getPromptTokens() + " completion=" + t.getCompletionTokens()
+                + " total=" + t.getTotalTokens() + " cached=" + t.getCachedTokens()
+                + " | ctx=" + t.getContextMessages() + " 条/估算 " + t.getContextEstimatedTokens()
+                + " token | model=" + t.getElapsedMs() + "ms";
     }
 
     private static String userContent(Event e) {
@@ -254,6 +266,7 @@ public final class TraceReplay {
                 .append(".DONE .tag{color:#ff6b81;}.RUNSTART .tag{color:#8b93a7;}")
                 .append(".TODO .tag{color:#ffd479;}.MODE .tag{color:#79e0ff;}")
                 .append(".VERIFY .tag{color:#ff9f43;}")
+                .append(".TOKENS .tag{color:#5ccfe6;}")
                 .append(".COMPACT .tag{color:#c0a3ff;}")
                 .append("details>summary{cursor:pointer;color:#8b93a7;}")
                 .append("</style></head><body>");
@@ -316,6 +329,11 @@ public final class TraceReplay {
                 cls = "THINK";
                 tag = "REASONING";
                 body = reasoningContent(e);
+            }
+            case TOKEN_USAGE -> {
+                cls = "TOKENS";
+                tag = "TOKENS";
+                body = tokenUsageLine((TokenUsageEvent) e);
             }
             case CALL_MODEL_FINISHED -> {
                 cls = "MODEL";

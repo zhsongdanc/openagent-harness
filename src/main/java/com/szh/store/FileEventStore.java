@@ -98,6 +98,14 @@ public class FileEventStore implements EventStore {
         return events;
     }
 
+    /**
+     * 会话文件目录：本地 Trace 查看器（{@code com.szh.web.SessionCatalog}）据此列出全部历史会话。
+     * 只读暴露，不影响写入行为。
+     */
+    public Path getSessionDir() {
+        return sessionDir;
+    }
+
     private Path sessionFile(String sessionId) {
         return sessionDir.resolve(sanitize(sessionId) + ".jsonl");
     }

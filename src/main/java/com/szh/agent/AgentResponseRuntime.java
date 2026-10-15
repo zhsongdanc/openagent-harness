@@ -20,6 +20,7 @@ import com.szh.event.Event;
 import com.szh.event.ContextCompactedEvent;
 import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
+import com.szh.event.TokenUsageEvent;
 import com.szh.event.UserMessageEvent;
 import com.szh.event.VerificationEvent;
 import com.szh.memory.LongTermMemory;
@@ -36,6 +37,7 @@ import com.szh.tool.tools.meta.PlanModePolicy;
 import com.szh.trace.RunTrace;
 import com.szh.trace.StepTrace;
 import com.szh.trace.TokenTracker;
+import com.szh.trace.context.ContextSnapshotStore;
 import com.szh.utils.CommonUtils;
 import com.szh.utils.ConfigUtil;
 import org.apache.commons.collections4.CollectionUtils;
@@ -83,12 +85,18 @@ public class AgentResponseRuntime {
 
     private final ContextCompactionManager compactionManager;
 
+    /**
+     * 每轮上下文快照写侧：与事件日志物理分离的侧车存储（诊断用，永不抛异常；无会话状态故 run 间复用）
+     */
+    private final ContextSnapshotStore contextSnapshotStore;
+
     public AgentResponseRuntime(AgentState agentState, ToolRegistry toolRegistry, ResponseModel model) {
         this.agentState = agentState;
         this.toolRegistry = toolRegistry;
         this.model = model;
         this.handlerRegistry = OutputItemHandlerRegistry.defaultRegistry();
         this.tokenTracker = new TokenTracker();
+        this.contextSnapshotStore = new ContextSnapshotStore();
         // 通过 ResponseModelSummarizer 适配 Responses API，使 L1 LLM 摘要压缩可用
         this.compactionManager = new ContextCompactionManager(new ResponseModelSummarizer(model), tokenTracker);
     }
@@ -132,9 +140,23 @@ public class AgentResponseRuntime {
                 compactionHappened = true;
             }
 
-            ResponseModelResp modelResp = callModel(buildCallContext(ctx), ctx, round);
-            // 记录本轮 token 用量（对齐 Chat 链路 AgentRuntime）：既累计到 run 级 tracker，也落到 StepTrace 供回放
+            // 本轮实际发给模型的上下文（含运行期记忆召回/规划契约/验证提示/护栏纠偏等软装饰）：
+            // 只构建一次并复用，既是快照原文，也是 model.call 的入参
+            List<MessageItem> callContext = buildCallContext(ctx);
+            // 本轮模型可见的工具集（PLAN 模式下收敛为只读子集，故逐轮结算）
+            List<Tool> effectiveTools = PlanModePolicy.effectiveTools(toolRegistry.getTools(), ctx.sessionId);
+            // 上下文快照：把「此刻真正发给模型的请求」原样另存到独立侧车目录（与事件日志物理分离，
+            // 写失败只告警不抛），供本地查看器还原 100% 原始上下文
+            contextSnapshotStore.record(ctx.sessionId, ctx.runId, ctx.turnId, round, callContext, effectiveTools);
+            long modelStart = System.currentTimeMillis();
+            ResponseModelResp modelResp = callModel(callContext, effectiveTools, ctx, round);
+            long modelElapsed = System.currentTimeMillis() - modelStart;
+            // 记录本轮 token 用量（对齐 Chat 链路 AgentRuntime）：既累计到 run 级 tracker，也落一条 surface
+            // 事件 + StepTrace，供查看器/回放按轮展示
             tokenTracker.recordRound(modelResp.getTokenUsage());
+            agentState.applyEvent(new TokenUsageEvent(ctx.sessionId, ctx.runId, ctx.turnId, round,
+                    modelResp.getTokenUsage(), callContext.size(),
+                    StepCompactor.estimateTotalTokens(callContext), modelElapsed));
             DispatchOutcome outcome = dispatchItems(modelResp, ctx.handleContext);
             // 一轮内多个 function_call 并发执行（取代旧串行）：事件按「全部 started → 并发执行 →
             // 全部 finished」有序落库，满足 Responses API 分组约束，执行细节由 ParallelToolExecutor 兜底
@@ -222,10 +244,10 @@ public class AgentResponseRuntime {
     }
 
     /**
-     * 调用模型：按 PLAN 模式收敛有效工具集，按开关装配流式监听器（增量 token 实时打到控制台）。
+     * 调用模型：装配流式监听器后发起请求。上下文与有效工具集由调用方构建（与快照复用同一份，避免重复构建）。
      */
-    private ResponseModelResp callModel(List<MessageItem> callContext, RunContext ctx, int round) {
-        List<Tool> effectiveTools = PlanModePolicy.effectiveTools(toolRegistry.getTools(), ctx.sessionId);
+    private ResponseModelResp callModel(List<MessageItem> callContext, List<Tool> effectiveTools,
+                                        RunContext ctx, int round) {
         StreamListener streamListener = ConfigUtil.getBoolean("model.stream.enabled", true)
                 ? new ConsoleStreamListener(ConfigUtil.getBoolean("model.stream.printReasoning", false))
                 : null;

@@ -24,6 +24,7 @@ import com.szh.tool.tools.meta.PlanModePolicy;
 import com.szh.trace.RunTrace;
 import com.szh.trace.StepTrace;
 import com.szh.trace.TokenTracker;
+import com.szh.trace.context.ContextSnapshotStore;
 import com.szh.utils.CommonUtils;
 import com.szh.utils.ConfigUtil;
 import org.apache.commons.collections4.CollectionUtils;
@@ -55,6 +56,11 @@ public class AgentRuntime {
     private ContextCompactionManager compactionManager;
 
     private ToolResultStore toolResultStore;
+
+    /**
+     * 每轮上下文快照写侧：与事件日志物理分离的侧车存储（诊断用，永不抛异常）
+     */
+    private ContextSnapshotStore contextSnapshotStore;
 
     public AgentRuntime(AgentState agentState, ToolRegistry toolRegistry, Model model) {
         this.agentState = agentState;
@@ -97,6 +103,8 @@ public class AgentRuntime {
         RunTrace runTrace = new RunTrace(runId, sessionId, System.currentTimeMillis());
         runTrace.setTokenTracker(tokenTracker);
         initToolResultStore(sessionId);
+        // run 级上下文快照存储：与本 run 的会话/轮次绑定，落盘到全局 ~/.openagent/context 侧车目录
+        this.contextSnapshotStore = new ContextSnapshotStore();
         // run 级熔断器：检测连续失败 / 重复调用，及时刹车
         LoopGuard loopGuard = new LoopGuard();
         // run 级验证闸门：改过代码后模型宣布完成时强制跑编译/测试，不通过则回灌失败逼其重修
@@ -150,14 +158,22 @@ public class AgentRuntime {
             // 循环护栏软提示：连续故障达软阈值时注入纠偏指令，给模型改策略的机会（硬熔断前的缓冲档）
             loopGuard.decorateContext(callContext);
             List<Tool> effectiveTools = PlanModePolicy.effectiveTools(toolRegistry.getTools(), sessionId);
+            // 上下文快照：把「此刻真正发给模型的请求」原样另存到独立侧车目录（与事件日志物理分离，
+            // 写失败只告警不抛），供本地查看器还原 100% 原始上下文
+            contextSnapshotStore.record(sessionId, runId, turnId, round, callContext, effectiveTools);
             // 流式输出：增量 token 实时打到控制台，长回答不再阻塞等待（model.stream.enabled 可关）
             StreamListener streamListener = ConfigUtil.getBoolean("model.stream.enabled", true)
                     ? new ConsoleStreamListener(ConfigUtil.getBoolean("model.stream.printReasoning", false))
                     : null;
+            long modelStart = System.currentTimeMillis();
             ModelResp modelResp = model.call(callContext, effectiveTools, streamListener);
+            long modelElapsed = System.currentTimeMillis() - modelStart;
 
-            // 记录 token 用量
+            // 记录 token 用量：既累计到 run 级 tracker，也落一条 surface 事件供查看器/回放按轮展示
             tokenTracker.recordRound(modelResp.getTokenUsage());
+            agentState.applyEvent(new TokenUsageEvent(sessionId, runId, turnId, round,
+                    modelResp.getTokenUsage(), callContext.size(),
+                    StepCompactor.estimateTotalTokens(callContext), modelElapsed));
 
             ModelResponseEvent modelResponseEvent = new ModelResponseEvent(sessionId, runId, turnId, round, modelResp.getMessage());
             agentState.applyEvent(modelResponseEvent);

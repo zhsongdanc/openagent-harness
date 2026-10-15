@@ -15,6 +15,7 @@ import com.szh.event.ReasoningEvent;
 import com.szh.event.RunCompletedEvent;
 import com.szh.event.RunStartedEvent;
 import com.szh.event.TodoUpdatedEvent;
+import com.szh.event.TokenUsageEvent;
 import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.UserMessageEvent;
 import com.szh.event.VerificationEvent;
@@ -77,6 +78,7 @@ public final class EventJsonCodec {
                     JsonUtil.parse(payload, AssistantMessageItem.class));
             case MODEL_REASONING -> new ReasoningEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
                     JsonUtil.parse(payload, ReasoningMessageItem.class));
+            case TOKEN_USAGE -> parseTokenUsage(s, payload);
             case CALL_TOOL_STARTED -> {
                 Map<String, String> data = parseToolStarted(payload);
                 yield new CallToolStartedEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
@@ -124,6 +126,34 @@ public final class EventJsonCodec {
         return new VerificationEvent(s.sessionId(), s.runId(), s.turnId(), s.round(), passed,
                 cmd == null ? null : String.valueOf(cmd), exitCode,
                 detail == null ? null : String.valueOf(detail));
+    }
+
+    /**
+     * token 用量事件负载反序列化：payload 是上述 7 个数值字段的 Map；
+     * 空/非法时全字段兜底为 0（老事件流无此类型，不受影响）
+     */
+    private static Event parseTokenUsage(SerializedEvent s, String payload) {
+        Map<String, Object> data = JsonUtil.parse(payload, new TypeReference<Map<String, Object>>() {
+        });
+        if (data == null) {
+            data = Map.of();
+        }
+        return new TokenUsageEvent(s.sessionId(), s.runId(), s.turnId(), s.round(),
+                asInt(data.get("promptTokens")), asInt(data.get("completionTokens")),
+                asInt(data.get("totalTokens")), asInt(data.get("cachedTokens")),
+                asInt(data.get("contextMessages")), asInt(data.get("contextEstimatedTokens")),
+                asLong(data.get("elapsedMs")));
+    }
+
+    /**
+     * 数值字段安全取整：缺失/非法类型一律 0，避免坏数据让整条事件反序列化失败
+     */
+    private static int asInt(Object value) {
+        return value instanceof Number n ? n.intValue() : 0;
+    }
+
+    private static long asLong(Object value) {
+        return value instanceof Number n ? n.longValue() : 0L;
     }
 
     /**

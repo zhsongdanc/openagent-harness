@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#
+# openagent-web —— 本地 Trace 查看器启动器（只读 Web UI，零新增依赖）。
+#
+# 与 bin/openagent 的区别只有两点：
+#   1) 入口不是 jar 的 Main-Class（REPL），而是 com.szh.web.TraceWebServer，故用 -cp 显式指定主类；
+#   2) 工作区决定「工具结果全文」能否看到——落盘的超长工具输出在 {workspace}/.agent-data/tool-results/ 下，
+#      查看某个工作区产生的会话时，请 cd 到那个仓库再启动，或用 --workspace 指过去。
+#
+# 用法：
+#   bin/openagent-web                       默认 127.0.0.1:8787
+#   bin/openagent-web --port 8788           换端口（端口被占用时会明确报错）
+#   bin/openagent-web --workspace /path     指定工作区（影响工具结果全文与 system prompt 重建口径）
+#
+# 浏览器打开打印出的地址即可；Ctrl+C 退出。
+
+set -euo pipefail
+
+# ---- 1. 解析脚本真实路径（支持被软链到 /usr/local/bin 之类的 PATH 目录）----
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  # 软链目标是相对路径时，拼回其所在目录
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+ROOT_DIR="$(cd -P "$BIN_DIR/.." && pwd)"
+JAR="$ROOT_DIR/target/openagent.jar"
+
+if [ ! -f "$JAR" ]; then
+  echo "[openagent-web] 未找到可执行 jar: $JAR" >&2
+  echo "[openagent-web] 请先构建:  (cd '$ROOT_DIR' && mvn -q clean package)" >&2
+  exit 1
+fi
+
+# ---- 2. 选一个 JDK21：JAVA_HOME 优先，其次本机已知路径，最后退回 PATH 上的 java ----
+KNOWN_JDK21="/Users/demus/Library/Java/JavaVirtualMachines/ms-21.0.12.1-1/Contents/Home"
+pick_java() {
+  if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    echo "$JAVA_HOME/bin/java"; return
+  fi
+  if [ -x "$KNOWN_JDK21/bin/java" ]; then
+    echo "$KNOWN_JDK21/bin/java"; return
+  fi
+  if command -v java >/dev/null 2>&1; then
+    command -v java; return
+  fi
+  echo ""
+}
+JAVA_BIN="$(pick_java)"
+if [ -z "$JAVA_BIN" ]; then
+  echo "[openagent-web] 未找到可用的 java，请安装 JDK21 或设置 JAVA_HOME。" >&2
+  exit 1
+fi
+
+# ---- 3. 启动查看器：-cp 指定主类，工作区默认跟随当前目录（可被 --workspace 覆盖）----
+# -D 系统属性必须放在 -cp 之前，否则会被当成程序参数。
+exec "$JAVA_BIN" \
+  ${OPENAGENT_JAVA_OPTS:--Xmx512m} \
+  -Dproject.workspace="$PWD" \
+  -cp "$JAR" \
+  com.szh.web.TraceWebServer \
+  "$@"
