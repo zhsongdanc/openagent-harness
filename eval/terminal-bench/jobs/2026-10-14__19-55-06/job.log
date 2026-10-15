@@ -1,0 +1,2 @@
+Agent 'openagent' does not declare an options_model; leftover kwargs are ignored
+Running command: mkdir -p /opt/openagent /opt/jre

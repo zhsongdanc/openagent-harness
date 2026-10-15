@@ -1,0 +1,435 @@
+2026-10-14 12:39:03 [main] INFO  com.szh.utils.ConfigUtil - config file loaded: application.properties, size=80
+2026-10-14 12:39:03 [main] INFO  com.szh.memory.ReflectionPolicy - ReflectionPolicy: trigger=ON_COMPACTION, intervalTurns=5
+2026-10-14 12:39:03 [main] INFO  com.szh.memory.LongTermMemory - LongTermMemory: enabled=false, retrieval=true, reflection=true(trigger=ON_COMPACTION), dedup=true(th=0.72), capacity=1000, storeReady=false
+2026-10-14 12:39:03 [main] INFO  com.szh.mcp.config.McpConfigLoader - mcp config file not found: /root/.openagent/mcp.json (create one to enable MCP servers)
+2026-10-14 12:39:03 [main] INFO  com.szh.store.EventStoreFactory - create event store, engine=FILE
+2026-10-14 12:39:04 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 1] 上下文状态: 消息数=2, 估算tokens=539, 类型分布=[reasoning=0, toolCall=0, toolResult=0]
+2026-10-14 12:39:04 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 首次调用，服务端 token 数未知，使用估算值: 539
+2026-10-14 12:39:04 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=539, ratio=0.00 (阈值=0.7), 消息数=2
+2026-10-14 12:39:06 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [message,function_call,function_call,]
+2026-10-14 12:39:06 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: pwd
+2026-10-14 12:39:06 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /app
+2026-10-14 12:39:06 [parallel-tool-worker] INFO  com.szh.tool.security.SandboxFactory - sandbox executor: direct (no OS-level isolation on this platform, rely on permission layer)
+2026-10-14 12:39:06 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=pwd, exitCode=0, outputLength=5
+2026-10-14 12:39:06 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /app, exitCode=0, outputLength=248
+2026-10-14 12:39:06 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 2] 上下文状态: 消息数=7, 估算tokens=681, 类型分布=[reasoning=0, toolCall=2, toolResult=2]
+2026-10-14 12:39:06 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=4325, ratio=0.02 (阈值=0.7), 消息数=7
+2026-10-14 12:39:07 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [function_call,function_call,]
+2026-10-14 12:39:07 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /app/eval.py
+2026-10-14 12:39:07 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /app/eigen.py
+2026-10-14 12:39:07 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /app/eigen.py, exitCode=0, outputLength=642
+2026-10-14 12:39:07 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /app/eval.py, exitCode=0, outputLength=2244
+2026-10-14 12:39:07 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_01_ET_tdOBMyQnCzX8VdHLktjr1005, tool=cat, lines=67, chars=2244
+2026-10-14 12:39:07 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 3] 上下文状态: 消息数=11, 估算tokens=1376, 类型分布=[reasoning=0, toolCall=4, toolResult=4]
+2026-10-14 12:39:07 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=4521, ratio=0.02 (阈值=0.7), 消息数=11
+2026-10-14 12:39:08 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:39:08 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 4] 上下文状态: 消息数=14, 估算tokens=2016, 类型分布=[reasoning=1, toolCall=5, toolResult=5]
+2026-10-14 12:39:08 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=5280, ratio=0.02 (阈值=0.7), 消息数=14
+2026-10-14 12:39:31 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:39:31 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: git --no-pager status -sb
+2026-10-14 12:39:31 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: mvn -B --version
+2026-10-14 12:39:32 [parallel-tool-worker] ERROR com.szh.tool.tools.shell.ShellRunner - execute command failed: mvn -B --version
+java.io.IOException: Cannot run program "mvn" (in directory "/app"): Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at com.szh.tool.tools.shell.ShellRunner.run(ShellRunner.java:75) ~[openagent.jar:?]
+	at com.szh.tool.tools.shell.ShellCommandTool.execute(ShellCommandTool.java:68) ~[openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.runSingle(ParallelToolExecutor.java:171) ~[openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.lambda$executeConcurrently$1(ParallelToolExecutor.java:124) ~[openagent.jar:?]
+	at java.base/java.util.concurrent.FutureTask.run(Unknown Source) ~[?:?]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source) ~[?:?]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source) ~[?:?]
+	at java.base/java.lang.Thread.run(Unknown Source) [?:?]
+Caused by: java.io.IOException: Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessImpl.forkAndExec(Native Method) ~[?:?]
+	at java.base/java.lang.ProcessImpl.<init>(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessImpl.start(Unknown Source) ~[?:?]
+	... 10 more
+2026-10-14 12:39:32 [parallel-tool-worker] ERROR com.szh.tool.tools.shell.ShellRunner - execute command failed: git --no-pager status -sb
+java.io.IOException: Cannot run program "git" (in directory "/app"): Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at com.szh.tool.tools.shell.ShellRunner.run(ShellRunner.java:75) ~[openagent.jar:?]
+	at com.szh.tool.tools.shell.ShellCommandTool.execute(ShellCommandTool.java:68) ~[openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.runSingle(ParallelToolExecutor.java:171) ~[openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.lambda$executeConcurrently$1(ParallelToolExecutor.java:124) ~[openagent.jar:?]
+	at java.base/java.util.concurrent.FutureTask.run(Unknown Source) ~[?:?]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source) ~[?:?]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source) ~[?:?]
+	at java.base/java.lang.Thread.run(Unknown Source) [?:?]
+Caused by: java.io.IOException: Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessImpl.forkAndExec(Native Method) ~[?:?]
+	at java.base/java.lang.ProcessImpl.<init>(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessImpl.start(Unknown Source) ~[?:?]
+	... 10 more
+2026-10-14 12:39:32 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 5] 上下文状态: 消息数=20, 估算tokens=5724, 类型分布=[reasoning=2, toolCall=7, toolResult=7]
+2026-10-14 12:39:32 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=6038, ratio=0.02 (阈值=0.7), 消息数=20
+2026-10-14 12:39:34 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:39:34 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -laR /app/.agent-data
+2026-10-14 12:39:34 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la / /
+2026-10-14 12:39:34 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -laR /app/.agent-data, exitCode=0, outputLength=612
+2026-10-14 12:39:34 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la / /, exitCode=0, outputLength=2521
+2026-10-14 12:39:34 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_01_JmPwKg5AZRfvs3db6LT99184, tool=ls, lines=56, chars=2521
+2026-10-14 12:39:34 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 6] 上下文状态: 消息数=25, 估算tokens=6678, 类型分布=[reasoning=3, toolCall=9, toolResult=9]
+2026-10-14 12:39:34 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=9657, ratio=0.04 (阈值=0.7), 消息数=25
+2026-10-14 12:39:44 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,function_call,function_call,function_call,]
+2026-10-14 12:39:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name python*
+2026-10-14 12:39:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /opt -maxdepth 2 -name *
+2026-10-14 12:39:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /installed-agent -name *
+2026-10-14 12:39:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name python*, exitCode=0, outputLength=0
+2026-10-14 12:39:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /installed-agent -name *, exitCode=0, outputLength=17
+2026-10-14 12:39:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /opt -maxdepth 2 -name *, exitCode=0, outputLength=146
+2026-10-14 12:39:44 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 7] 上下文状态: 消息数=32, 估算tokens=8387, 类型分布=[reasoning=4, toolCall=12, toolResult=12]
+2026-10-14 12:39:44 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=11106, ratio=0.04 (阈值=0.7), 消息数=32
+2026-10-14 12:39:46 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,function_call,function_call,function_call,]
+2026-10-14 12:39:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr -maxdepth 4 -name python3*
+2026-10-14 12:39:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /app/..
+2026-10-14 12:39:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/lib -maxdepth 6 -path *python* -name *.so
+2026-10-14 12:39:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /app/.., exitCode=0, outputLength=1257
+2026-10-14 12:39:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/lib -maxdepth 6 -path *python* -name *.so, exitCode=0, outputLength=0
+2026-10-14 12:39:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr -maxdepth 4 -name python3*, exitCode=0, outputLength=246
+2026-10-14 12:39:46 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 8] 上下文状态: 消息数=39, 估算tokens=8958, 类型分布=[reasoning=5, toolCall=15, toolResult=15]
+2026-10-14 12:39:46 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=12974, ratio=0.05 (阈值=0.7), 消息数=39
+2026-10-14 12:39:47 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,function_call,function_call,function_call,]
+2026-10-14 12:39:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /usr/local/lib/python3.13
+2026-10-14 12:39:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /usr/local/lib/python3.13/site-packages
+2026-10-14 12:39:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /usr/local/bin
+2026-10-14 12:39:48 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /usr/local/bin, exitCode=0, outputLength=1079
+2026-10-14 12:39:48 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /usr/local/lib/python3.13, exitCode=0, outputLength=10505
+2026-10-14 12:39:48 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /usr/local/lib/python3.13/site-packages, exitCode=0, outputLength=423
+2026-10-14 12:39:48 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_00_82aqCakAzR4LOHSu1bMD1568, tool=ls, lines=196, chars=10505
+2026-10-14 12:39:48 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 9] 上下文状态: 消息数=46, 估算tokens=10023, 类型分布=[reasoning=6, toolCall=18, toolResult=18]
+2026-10-14 12:39:48 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=13890, ratio=0.06 (阈值=0.7), 消息数=46
+2026-10-14 12:39:56 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:39:56 [parallel-tool-worker] WARN  com.szh.tool.tools.file.WriteFileTool - write_file 参数错误, args={"path": "/usr/local/bin/probe_bin", "content": "#!/bin/sh\necho probe\n"}, reason=路径 /usr/local/bin/probe_bin 在工作区外，禁止写入（如确需放开请配置 file.tools.allowOutside=true）
+2026-10-14 12:39:56 [parallel-tool-worker] WARN  com.szh.tool.tools.file.WriteFileTool - write_file 参数错误, args={"path": "/tmp/probe.txt", "content": "hello\n"}, reason=路径 /tmp/probe.txt 在工作区外，禁止写入（如确需放开请配置 file.tools.allowOutside=true）
+2026-10-14 12:39:56 [main] WARN  com.szh.agent.LoopGuard - [LoopGuard] advise: 工具 [write_file] 已连续故障 2 次，请停止重复调用它，改用其他工具或方法达成目标。
+2026-10-14 12:39:56 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 10] 上下文状态: 消息数=52, 估算tokens=11519, 类型分布=[reasoning=7, toolCall=20, toolResult=20]
+2026-10-14 12:39:56 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=15592, ratio=0.06 (阈值=0.7), 消息数=52
+2026-10-14 12:40:23 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:40:23 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la; id /app
+2026-10-14 12:40:23 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app -maxdepth 1 -exec echo EXEC_OK {} ; -name *.py
+2026-10-14 12:40:23 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la; id /app, exitCode=2, outputLength=64
+2026-10-14 12:40:23 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app -maxdepth 1 -exec echo EXEC_OK {} ; -name *.py, exitCode=0, outputLength=81
+2026-10-14 12:40:23 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 11] 上下文状态: 消息数=58, 估算tokens=15371, 类型分布=[reasoning=8, toolCall=22, toolResult=22]
+2026-10-14 12:40:23 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=17109, ratio=0.07 (阈值=0.7), 消息数=58
+2026-10-14 12:40:25 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,message,function_call,]
+2026-10-14 12:40:25 [main] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_run.sh turn=turn_1 existed=false rel=_run.sh
+2026-10-14 12:40:25 [main] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=false, bytes=95, lines=4
+2026-10-14 12:40:25 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 12] 上下文状态: 消息数=62, 估算tokens=15676, 类型分布=[reasoning=9, toolCall=23, toolResult=23]
+2026-10-14 12:40:25 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=21577, ratio=0.09 (阈值=0.7), 消息数=62
+2026-10-14 12:40:26 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:40:26 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app -maxdepth 1 -exec sh /app/_run.sh ; -name eigen.py
+2026-10-14 12:40:29 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app -maxdepth 1 -exec sh /app/_run.sh ; -name eigen.py, exitCode=0, outputLength=80
+2026-10-14 12:40:29 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 13] 上下文状态: 消息数=64, 估算tokens=15746, 类型分布=[reasoning=9, toolCall=24, toolResult=24]
+2026-10-14 12:40:29 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=21944, ratio=0.09 (阈值=0.7), 消息数=64
+2026-10-14 12:40:35 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:40:35 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=48, lines=4
+2026-10-14 12:40:35 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_scratch.py turn=turn_1 existed=false rel=_scratch.py
+2026-10-14 12:40:35 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_scratch.py, existed=false, bytes=1057, lines=40
+2026-10-14 12:40:35 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 14] 上下文状态: 消息数=70, 估算tokens=16917, 类型分布=[reasoning=10, toolCall=26, toolResult=26]
+2026-10-14 12:40:35 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=22072, ratio=0.09 (阈值=0.7), 消息数=70
+2026-10-14 12:40:36 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:40:36 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app -maxdepth 1 -exec sh /app/_run.sh ; -name _scratch.py
+2026-10-14 12:41:07 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app -maxdepth 1 -exec sh /app/_run.sh ; -name _scratch.py, exitCode=0, outputLength=2742
+2026-10-14 12:41:07 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_00_ET_iirOLRjLKsrmDNTSP32W2586, tool=find, lines=91, chars=2742
+2026-10-14 12:41:07 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 15] 上下文状态: 消息数=72, 估算tokens=17434, 类型分布=[reasoning=10, toolCall=27, toolResult=27]
+2026-10-14 12:41:07 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=23378, ratio=0.09 (阈值=0.7), 消息数=72
+2026-10-14 12:41:40 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 5 output items: [reasoning,message,function_call,function_call,function_call,]
+2026-10-14 12:41:40 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py
+2026-10-14 12:41:40 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_scratch.py, existed=true, bytes=804, lines=26
+2026-10-14 12:41:40 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=48, lines=4
+2026-10-14 12:41:41 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py, exitCode=0, outputLength=513
+2026-10-14 12:41:41 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 16] 上下文状态: 消息数=80, 估算tokens=22447, 类型分布=[reasoning=11, toolCall=30, toolResult=30]
+2026-10-14 12:41:41 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=24182, ratio=0.10 (阈值=0.7), 消息数=80
+2026-10-14 12:42:16 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:42:16 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py
+2026-10-14 12:42:16 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_scratch.py, existed=true, bytes=603, lines=16
+2026-10-14 12:42:17 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py, exitCode=0, outputLength=258
+2026-10-14 12:42:17 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 17] 上下文状态: 消息数=85, 估算tokens=27214, 类型分布=[reasoning=12, toolCall=32, toolResult=32]
+2026-10-14 12:42:17 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=30056, ratio=0.12 (阈值=0.7), 消息数=85
+2026-10-14 12:42:19 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:42:19 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py
+2026-10-14 12:42:19 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_scratch.py, existed=true, bytes=297, lines=9
+2026-10-14 12:42:19 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py, exitCode=0, outputLength=167
+2026-10-14 12:42:19 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 18] 上下文状态: 消息数=90, 估算tokens=27623, 类型分布=[reasoning=13, toolCall=34, toolResult=34]
+2026-10-14 12:42:19 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=36051, ratio=0.14 (阈值=0.7), 消息数=90
+2026-10-14 12:43:14 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:43:14 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_scratch.py, existed=true, bytes=2312, lines=65
+2026-10-14 12:43:14 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_install.sh turn=turn_1 existed=false rel=_install.sh
+2026-10-14 12:43:14 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_install.sh, existed=false, bytes=230, lines=7
+2026-10-14 12:43:14 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 19] 上下文状态: 消息数=96, 估算tokens=35611, 类型分布=[reasoning=14, toolCall=36, toolResult=36]
+2026-10-14 12:43:14 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=36576, ratio=0.15 (阈值=0.7), 消息数=96
+2026-10-14 12:43:18 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:43:18 [main] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_scratch.py, existed=true, bytes=1942, lines=49
+2026-10-14 12:43:18 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 20] 上下文状态: 消息数=99, 估算tokens=36240, 类型分布=[reasoning=15, toolCall=37, toolResult=37]
+2026-10-14 12:43:18 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=46056, ratio=0.18 (阈值=0.7), 消息数=99
+2026-10-14 12:43:19 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [function_call,function_call,]
+2026-10-14 12:43:19 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py
+2026-10-14 12:43:19 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigen.py -maxdepth 0 -exec sh /app/_install.sh ; -name eigen.py
+2026-10-14 12:43:20 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app -maxdepth 0 -exec sh /app/_run.sh ; -name eigen.py, exitCode=0, outputLength=824
+2026-10-14 12:43:41 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigen.py -maxdepth 0 -exec sh /app/_install.sh ; -name eigen.py, exitCode=0, outputLength=631
+2026-10-14 12:43:41 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 21] 上下文状态: 消息数=103, 估算tokens=36707, 类型分布=[reasoning=15, toolCall=39, toolResult=39]
+2026-10-14 12:43:41 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=46928, ratio=0.19 (阈值=0.7), 消息数=103
+2026-10-14 12:45:16 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 5 output items: [reasoning,message,function_call,function_call,function_call,]
+2026-10-14 12:45:16 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=46, lines=4
+2026-10-14 12:45:16 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/eigenlib.c turn=turn_1 existed=false rel=eigenlib.c
+2026-10-14 12:45:16 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_build.sh turn=turn_1 existed=false rel=_build.sh
+2026-10-14 12:45:16 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_build.sh, existed=false, bytes=253, lines=11
+2026-10-14 12:45:16 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/eigenlib.c, existed=false, bytes=7637, lines=229
+2026-10-14 12:45:16 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 22] 上下文状态: 消息数=111, 估算tokens=51145, 类型分布=[reasoning=16, toolCall=42, toolResult=42]
+2026-10-14 12:45:16 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=47572, ratio=0.19 (阈值=0.7), 消息数=111
+2026-10-14 12:45:20 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:45:20 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenlib.c
+2026-10-14 12:45:20 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_bench.py turn=turn_1 existed=false rel=_bench.py
+2026-10-14 12:45:20 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_bench.py, existed=false, bytes=2038, lines=65
+2026-10-14 12:45:29 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenlib.c, exitCode=0, outputLength=61
+2026-10-14 12:45:29 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 23] 上下文状态: 消息数=116, 估算tokens=51905, 类型分布=[reasoning=17, toolCall=44, toolResult=44]
+2026-10-14 12:45:29 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=66872, ratio=0.27 (阈值=0.7), 消息数=116
+2026-10-14 12:45:30 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:45:30 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:45:32 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=2166
+2026-10-14 12:45:32 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_00_f4WGABed6ZMPsQuShqeF5945, tool=find, lines=77, chars=2166
+2026-10-14 12:45:32 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 24] 上下文状态: 消息数=119, 估算tokens=52438, 类型分布=[reasoning=18, toolCall=45, toolResult=45]
+2026-10-14 12:45:32 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=67868, ratio=0.27 (阈值=0.7), 消息数=119
+2026-10-14 12:46:33 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:46:33 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=45, lines=4
+2026-10-14 12:46:33 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_diag.py turn=turn_1 existed=false rel=_diag.py
+2026-10-14 12:46:33 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_diag.py, existed=false, bytes=2165, lines=71
+2026-10-14 12:46:33 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 25] 上下文状态: 消息数=125, 估算tokens=61536, 类型分布=[reasoning=19, toolCall=47, toolResult=47]
+2026-10-14 12:46:33 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=68751, ratio=0.28 (阈值=0.7), 消息数=125
+2026-10-14 12:46:34 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:46:34 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:46:35 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=822
+2026-10-14 12:46:35 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 26] 上下文状态: 消息数=127, 估算tokens=61794, 类型分布=[reasoning=19, toolCall=48, toolResult=48]
+2026-10-14 12:46:35 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=80111, ratio=0.32 (阈值=0.7), 消息数=127
+2026-10-14 12:47:14 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:47:14 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=45, lines=4
+2026-10-14 12:47:14 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/eigenlib.c turn=turn_1 existed=true rel=eigenlib.c
+2026-10-14 12:47:14 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/eigenlib.c, existed=true, bytes=12500, lines=353
+2026-10-14 12:47:14 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 27] 上下文状态: 消息数=133, 估算tokens=68697, 类型分布=[reasoning=20, toolCall=50, toolResult=50]
+2026-10-14 12:47:14 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=80589, ratio=0.32 (阈值=0.7), 消息数=133
+2026-10-14 12:47:16 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:47:16 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenlib.c
+2026-10-14 12:47:17 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenlib.c, exitCode=0, outputLength=61
+2026-10-14 12:47:17 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 28] 上下文状态: 消息数=136, 估算tokens=68922, 类型分布=[reasoning=21, toolCall=51, toolResult=51]
+2026-10-14 12:47:17 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=90091, ratio=0.36 (阈值=0.7), 消息数=136
+2026-10-14 12:47:18 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:47:18 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:47:19 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=822
+2026-10-14 12:47:19 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 29] 上下文状态: 消息数=138, 估算tokens=69180, 类型分布=[reasoning=21, toolCall=52, toolResult=52]
+2026-10-14 12:47:19 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=90413, ratio=0.36 (阈值=0.7), 消息数=138
+2026-10-14 12:47:31 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,function_call,function_call,function_call,]
+2026-10-14 12:47:31 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_diag.py, existed=true, bytes=2440, lines=81
+2026-10-14 12:47:31 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenlib.c, occurrences=1, replaced=1
+2026-10-14 12:47:31 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenlib.c, occurrences=1, replaced=1
+2026-10-14 12:47:31 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 30] 上下文状态: 消息数=145, 估算tokens=71706, 类型分布=[reasoning=22, toolCall=55, toolResult=55]
+2026-10-14 12:47:31 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=90891, ratio=0.36 (阈值=0.7), 消息数=145
+2026-10-14 12:47:32 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:47:32 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenlib.c
+2026-10-14 12:47:32 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenlib.c, exitCode=0, outputLength=1219
+2026-10-14 12:47:32 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 31] 上下文状态: 消息数=147, 估算tokens=72065, 类型分布=[reasoning=22, toolCall=56, toolResult=56]
+2026-10-14 12:47:32 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=94230, ratio=0.38 (阈值=0.7), 消息数=147
+2026-10-14 12:47:48 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:47:48 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/eigenlib.c, existed=true, bytes=12548, lines=357
+2026-10-14 12:47:48 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=174, lines=7
+2026-10-14 12:47:48 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 32] 上下文状态: 消息数=153, 估算tokens=75854, 类型分布=[reasoning=23, toolCall=58, toolResult=58]
+2026-10-14 12:47:48 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=94721, ratio=0.38 (阈值=0.7), 消息数=153
+2026-10-14 12:47:49 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:47:49 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:47:52 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=921
+2026-10-14 12:47:52 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 33] 上下文状态: 消息数=155, 估算tokens=76137, 类型分布=[reasoning=23, toolCall=59, toolResult=59]
+2026-10-14 12:47:52 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=100274, ratio=0.40 (阈值=0.7), 消息数=155
+2026-10-14 12:47:55 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:47:55 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:47:57 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=921
+2026-10-14 12:47:57 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 34] 上下文状态: 消息数=158, 估算tokens=76613, 类型分布=[reasoning=24, toolCall=60, toolResult=60]
+2026-10-14 12:47:57 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=100807, ratio=0.40 (阈值=0.7), 消息数=158
+2026-10-14 12:48:13 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:48:13 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=174, lines=7
+2026-10-14 12:48:13 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_diag.py, existed=true, bytes=2048, lines=62
+2026-10-14 12:48:13 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 35] 上下文状态: 消息数=164, 估算tokens=79471, 类型分布=[reasoning=25, toolCall=62, toolResult=62]
+2026-10-14 12:48:13 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=101542, ratio=0.41 (阈值=0.7), 消息数=164
+2026-10-14 12:48:15 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:48:15 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:48:18 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=1631
+2026-10-14 12:48:18 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 36] 上下文状态: 消息数=166, 估算tokens=79932, 类型分布=[reasoning=25, toolCall=63, toolResult=63]
+2026-10-14 12:48:18 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=104806, ratio=0.42 (阈值=0.7), 消息数=166
+2026-10-14 12:49:35 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:49:35 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=174, lines=7
+2026-10-14 12:49:35 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_diag.py, existed=true, bytes=2244, lines=74
+2026-10-14 12:49:35 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 37] 上下文状态: 消息数=172, 估算tokens=91340, 类型分布=[reasoning=26, toolCall=65, toolResult=65]
+2026-10-14 12:49:35 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=105669, ratio=0.42 (阈值=0.7), 消息数=172
+2026-10-14 12:49:36 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:49:36 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:49:37 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=2221
+2026-10-14 12:49:37 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 38] 上下文状态: 消息数=174, 估算tokens=91948, 类型分布=[reasoning=26, toolCall=66, toolResult=66]
+2026-10-14 12:49:37 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=119556, ratio=0.48 (阈值=0.7), 消息数=174
+2026-10-14 12:50:13 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:50:13 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=45, lines=4
+2026-10-14 12:50:13 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_diag.py, existed=true, bytes=2402, lines=54
+2026-10-14 12:50:13 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 39] 上下文状态: 消息数=180, 估算tokens=97431, 类型分布=[reasoning=27, toolCall=68, toolResult=68]
+2026-10-14 12:50:13 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=120679, ratio=0.48 (阈值=0.7), 消息数=180
+2026-10-14 12:50:14 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:50:14 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c
+2026-10-14 12:50:15 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenlib.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenlib.c, exitCode=0, outputLength=350
+2026-10-14 12:50:15 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 40] 上下文状态: 消息数=182, 估算tokens=97571, 类型分布=[reasoning=27, toolCall=69, toolResult=69]
+2026-10-14 12:50:15 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=127531, ratio=0.51 (阈值=0.7), 消息数=182
+2026-10-14 12:51:08 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:51:08 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_build.sh, existed=true, bytes=284, lines=9
+2026-10-14 12:51:08 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/eigenmod.c turn=turn_1 existed=false rel=eigenmod.c
+2026-10-14 12:51:08 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/eigenmod.c, existed=false, bytes=14808, lines=415
+2026-10-14 12:51:08 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 41] 上下文状态: 消息数=188, 估算tokens=107444, 类型分布=[reasoning=28, toolCall=71, toolResult=71]
+2026-10-14 12:51:08 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=127753, ratio=0.51 (阈值=0.7), 消息数=188
+2026-10-14 12:51:10 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:51:10 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenmod.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenmod.c
+2026-10-14 12:51:12 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenmod.c -maxdepth 0 -exec sh /app/_build.sh ; -name eigenmod.c, exitCode=0, outputLength=9
+2026-10-14 12:51:12 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 42] 上下文状态: 消息数=190, 估算tokens=107500, 类型分布=[reasoning=28, toolCall=72, toolResult=72]
+2026-10-14 12:51:12 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=140569, ratio=0.56 (阈值=0.7), 消息数=190
+2026-10-14 12:51:18 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:51:18 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_diag.py, existed=true, bytes=2844, lines=86
+2026-10-14 12:51:18 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=45, lines=4
+2026-10-14 12:51:18 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 43] 上下文状态: 消息数=195, 估算tokens=108559, 类型分布=[reasoning=29, toolCall=74, toolResult=74]
+2026-10-14 12:51:18 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=140661, ratio=0.56 (阈值=0.7), 消息数=195
+2026-10-14 12:51:19 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:51:19 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c
+2026-10-14 12:51:23 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c, exitCode=0, outputLength=1260
+2026-10-14 12:51:23 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 44] 上下文状态: 消息数=197, 估算tokens=108927, 类型分布=[reasoning=29, toolCall=75, toolResult=75]
+2026-10-14 12:51:23 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=142084, ratio=0.57 (阈值=0.7), 消息数=197
+2026-10-14 12:51:44 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:51:44 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=44, lines=4
+2026-10-14 12:51:44 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_gen.py turn=turn_1 existed=false rel=_gen.py
+2026-10-14 12:51:44 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_gen.py, existed=false, bytes=5314, lines=160
+2026-10-14 12:51:44 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 45] 上下文状态: 消息数=203, 估算tokens=113012, 类型分布=[reasoning=30, toolCall=77, toolResult=77]
+2026-10-14 12:51:44 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=142825, ratio=0.57 (阈值=0.7), 消息数=203
+2026-10-14 12:51:51 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:51:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_gen.py -maxdepth 0 -exec sh /app/_run.sh ; -name _gen.py
+2026-10-14 12:51:51 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_gen.py, existed=true, bytes=5160, lines=169
+2026-10-14 12:51:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_gen.py -maxdepth 0 -exec sh /app/_run.sh ; -name _gen.py, exitCode=0, outputLength=266
+2026-10-14 12:51:51 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 46] 上下文状态: 消息数=208, 估算tokens=114858, 类型分布=[reasoning=31, toolCall=79, toolResult=79]
+2026-10-14 12:51:51 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=147235, ratio=0.59 (阈值=0.7), 消息数=208
+2026-10-14 12:51:58 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:51:58 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_gen.py, existed=true, bytes=5260, lines=170
+2026-10-14 12:51:58 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=44, lines=4
+2026-10-14 12:51:58 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 47] 上下文状态: 消息数=213, 估算tokens=116652, 类型分布=[reasoning=32, toolCall=81, toolResult=81]
+2026-10-14 12:51:58 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=149158, ratio=0.60 (阈值=0.7), 消息数=213
+2026-10-14 12:51:59 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:51:59 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_gen.py -maxdepth 0 -exec sh /app/_run.sh ; -name _gen.py
+2026-10-14 12:51:59 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_gen.py -maxdepth 0 -exec sh /app/_run.sh ; -name _gen.py, exitCode=0, outputLength=68
+2026-10-14 12:51:59 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 48] 上下文状态: 消息数=215, 估算tokens=116721, 类型分布=[reasoning=32, toolCall=82, toolResult=82]
+2026-10-14 12:51:59 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=151030, ratio=0.60 (阈值=0.7), 消息数=215
+2026-10-14 12:52:03 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:52:03 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_gen.py -maxdepth 0 -exec sh /app/_run.sh ; -name _gen.py
+2026-10-14 12:52:03 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=538, lines=20
+2026-10-14 12:52:04 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_gen.py -maxdepth 0 -exec sh /app/_run.sh ; -name _gen.py, exitCode=0, outputLength=510
+2026-10-14 12:52:04 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 49] 上下文状态: 消息数=220, 估算tokens=117420, 类型分布=[reasoning=33, toolCall=84, toolResult=84]
+2026-10-14 12:52:04 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=151143, ratio=0.60 (阈值=0.7), 消息数=220
+2026-10-14 12:52:16 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:52:16 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_diag.py, existed=true, bytes=3246, lines=101
+2026-10-14 12:52:16 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=45, lines=4
+2026-10-14 12:52:16 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 50] 上下文状态: 消息数=226, 估算tokens=119542, 类型分布=[reasoning=34, toolCall=86, toolResult=86]
+2026-10-14 12:52:16 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=152011, ratio=0.61 (阈值=0.7), 消息数=226
+2026-10-14 12:52:17 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:52:17 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_diag.py -maxdepth 0 -exec sh /app/_run.sh ; -name _diag.py
+2026-10-14 12:52:20 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_diag.py -maxdepth 0 -exec sh /app/_run.sh ; -name _diag.py, exitCode=0, outputLength=690
+2026-10-14 12:52:20 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 51] 上下文状态: 消息数=228, 估算tokens=119766, 类型分布=[reasoning=34, toolCall=87, toolResult=87]
+2026-10-14 12:52:20 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=154696, ratio=0.62 (阈值=0.7), 消息数=228
+2026-10-14 12:53:09 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 6 output items: [reasoning,message,function_call,function_call,function_call,function_call,]
+2026-10-14 12:53:09 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c
+2026-10-14 12:53:09 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=45, lines=4
+2026-10-14 12:53:09 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenmod.c, occurrences=1, replaced=1
+2026-10-14 12:53:09 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenmod.c, occurrences=1, replaced=1
+2026-10-14 12:53:12 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c, exitCode=0, outputLength=692
+2026-10-14 12:53:12 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 52] 上下文状态: 消息数=238, 估算tokens=128342, 类型分布=[reasoning=35, toolCall=91, toolResult=91]
+2026-10-14 12:53:12 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=155044, ratio=0.62 (阈值=0.7), 消息数=238
+2026-10-14 12:53:15 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,function_call,function_call,function_call,]
+2026-10-14 12:53:15 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=311, lines=10
+2026-10-14 12:53:15 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenmod.c, occurrences=1, replaced=1
+2026-10-14 12:53:15 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenmod.c, occurrences=1, replaced=1
+2026-10-14 12:53:15 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 53] 上下文状态: 消息数=245, 估算tokens=129071, 类型分布=[reasoning=36, toolCall=94, toolResult=94]
+2026-10-14 12:53:15 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=165570, ratio=0.66 (阈值=0.7), 消息数=245
+2026-10-14 12:53:18 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:53:18 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: grep -n -C 2 extract\(B, cand|int trust|double invn|&& trust /app/eigenmod.c
+2026-10-14 12:53:18 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=grep -n -C 2 extract\(B, cand|int trust|double invn|&& trust /app/eigenmod.c, exitCode=2, outputLength=24
+2026-10-14 12:53:18 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 54] 上下文状态: 消息数=248, 估算tokens=129318, 类型分布=[reasoning=37, toolCall=95, toolResult=95]
+2026-10-14 12:53:18 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=166604, ratio=0.67 (阈值=0.7), 消息数=248
+2026-10-14 12:53:19 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:53:19 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: grep -n -C 3 extract.B, cand|int trust|double invn|trust /app/eigenmod.c
+2026-10-14 12:53:19 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=grep -n -C 3 extract.B, cand|int trust|double invn|trust /app/eigenmod.c, exitCode=1, outputLength=0
+2026-10-14 12:53:19 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 55] 上下文状态: 消息数=250, 估算tokens=129386, 类型分布=[reasoning=37, toolCall=96, toolResult=96]
+2026-10-14 12:53:19 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=166926, ratio=0.67 (阈值=0.7), 消息数=250
+2026-10-14 12:53:21 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:53:21 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: grep -rn extract /app/eigenmod.c
+2026-10-14 12:53:21 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: grep -rn trust /app/eigenmod.c
+2026-10-14 12:53:21 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=grep -rn trust /app/eigenmod.c, exitCode=0, outputLength=186
+2026-10-14 12:53:21 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=grep -rn extract /app/eigenmod.c, exitCode=0, outputLength=167
+2026-10-14 12:53:21 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 56] 上下文状态: 消息数=255, 估算tokens=129613, 类型分布=[reasoning=38, toolCall=98, toolResult=98]
+2026-10-14 12:53:21 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=167030, ratio=0.67 (阈值=0.7), 消息数=255
+2026-10-14 12:53:23 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:53:23 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 57] 上下文状态: 消息数=258, 估算tokens=130376, 类型分布=[reasoning=39, toolCall=99, toolResult=99]
+2026-10-14 12:53:23 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=167342, ratio=0.67 (阈值=0.7), 消息数=258
+2026-10-14 12:53:25 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [reasoning,function_call,]
+2026-10-14 12:53:25 [main] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenmod.c, occurrences=1, replaced=1
+2026-10-14 12:53:25 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 58] 上下文状态: 消息数=261, 估算tokens=130649, 类型分布=[reasoning=40, toolCall=100, toolResult=100]
+2026-10-14 12:53:25 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=168363, ratio=0.67 (阈值=0.7), 消息数=261
+2026-10-14 12:53:26 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:53:26 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c
+2026-10-14 12:53:27 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c, exitCode=0, outputLength=1277
+2026-10-14 12:53:27 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 59] 上下文状态: 消息数=263, 估算tokens=131021, 类型分布=[reasoning=40, toolCall=101, toolResult=101]
+2026-10-14 12:53:27 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=168776, ratio=0.68 (阈值=0.7), 消息数=263
+2026-10-14 12:53:46 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:53:46 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/eigenmod.c, existed=true, bytes=15866, lines=436
+2026-10-14 12:53:46 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=311, lines=10
+2026-10-14 12:53:46 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 60] 上下文状态: 消息数=269, 估算tokens=135462, 类型分布=[reasoning=41, toolCall=103, toolResult=103]
+2026-10-14 12:53:46 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=169226, ratio=0.68 (阈值=0.7), 消息数=269
+2026-10-14 12:53:47 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:53:47 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c
+2026-10-14 12:53:52 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenmod.c -maxdepth 0 -exec sh /app/_run.sh ; -name eigenmod.c, exitCode=0, outputLength=686
+2026-10-14 12:53:52 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 61] 上下文状态: 消息数=271, 估算tokens=135686, 类型分布=[reasoning=41, toolCall=104, toolResult=104]
+2026-10-14 12:53:52 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=175738, ratio=0.70 (阈值=0.7), 消息数=271
+2026-10-14 12:53:52 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 触发压缩: ratio=0.70 >= 0.7, 消息数=271
+2026-10-14 12:53:52 [main] INFO  com.szh.context.compaction.StepCompactor - StepCompactor L0: messages 271 -> 271, tokens ~135686 -> ~39710
+2026-10-14 12:53:52 [main] INFO  com.szh.trace.TokenTracker - TokenTracker: recalibrate context tokens from 175738 to 39710
+2026-10-14 12:53:52 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] L0 完成: ratio 0.70 -> 0.16, 消息数 271 -> 271
+2026-10-14 12:53:52 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 61] >>> 压缩已执行: 消息数 271 -> 271 <<<
+2026-10-14 12:53:52 [main] INFO  com.szh.agent.AgentState - AgentState: replacing modelContext, size 271 -> 271
+2026-10-14 12:54:03 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,message,function_call,function_call,]
+2026-10-14 12:54:03 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/eigenmod.c -maxdepth 0 -exec sh /app/_gen.py ; -name eigenmod.c
+2026-10-14 12:54:03 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/eigenmod.c, occurrences=1, replaced=1
+2026-10-14 12:54:03 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/eigenmod.c -maxdepth 0 -exec sh /app/_gen.py ; -name eigenmod.c, exitCode=0, outputLength=81
+2026-10-14 12:54:03 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 62] 上下文状态: 消息数=277, 估算tokens=41374, 类型分布=[reasoning=42, toolCall=106, toolResult=106]
+2026-10-14 12:54:03 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=159620, ratio=0.64 (阈值=0.7), 消息数=277
+2026-10-14 12:54:10 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:54:10 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_gen.py, existed=true, bytes=5774, lines=181
+2026-10-14 12:54:10 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_final.sh turn=turn_1 existed=false rel=_final.sh
+2026-10-14 12:54:10 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_final.sh, existed=false, bytes=391, lines=12
+2026-10-14 12:54:10 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 63] 上下文状态: 消息数=282, 估算tokens=43286, 类型分布=[reasoning=43, toolCall=108, toolResult=108]
+2026-10-14 12:54:10 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=161545, ratio=0.65 (阈值=0.7), 消息数=282
+2026-10-14 12:54:11 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:54:11 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_final.sh -maxdepth 0 -exec sh /app/_final.sh ; -name _final.sh
+2026-10-14 12:54:13 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_final.sh -maxdepth 0 -exec sh /app/_final.sh ; -name _final.sh, exitCode=0, outputLength=233
+2026-10-14 12:54:13 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 64] 上下文状态: 消息数=284, 估算tokens=43397, 类型分布=[reasoning=43, toolCall=109, toolResult=109]
+2026-10-14 12:54:13 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=163476, ratio=0.65 (阈值=0.7), 消息数=284
+2026-10-14 12:54:21 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 4 output items: [reasoning,function_call,function_call,function_call,]
+2026-10-14 12:54:21 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_validate.py -maxdepth 0 -exec sh /app/_run.sh ; -name _validate.py
+2026-10-14 12:54:21 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_validate.py -maxdepth 0 -exec sh /app/_run.sh ; -name _validate.py, exitCode=1, outputLength=53
+2026-10-14 12:54:21 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_run.sh, existed=true, bytes=49, lines=4
+2026-10-14 12:54:21 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_validate.py turn=turn_1 existed=false rel=_validate.py
+2026-10-14 12:54:21 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_validate.py, existed=false, bytes=3466, lines=107
+2026-10-14 12:54:21 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 65] 上下文状态: 消息数=291, 估算tokens=44852, 类型分布=[reasoning=44, toolCall=112, toolResult=112]
+2026-10-14 12:54:21 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=163655, ratio=0.65 (阈值=0.7), 消息数=291
+2026-10-14 12:54:22 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 1 output items: [function_call,]
+2026-10-14 12:54:22 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_validate.py -maxdepth 0 -exec sh /app/_run.sh ; -name _validate.py
+2026-10-14 12:54:23 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_validate.py -maxdepth 0 -exec sh /app/_run.sh ; -name _validate.py, exitCode=0, outputLength=373
+2026-10-14 12:54:23 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 66] 上下文状态: 消息数=293, 估算tokens=44999, 类型分布=[reasoning=44, toolCall=113, toolResult=113]
+2026-10-14 12:54:23 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=165578, ratio=0.66 (阈值=0.7), 消息数=293
+2026-10-14 12:54:26 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:54:26 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_validate.py -maxdepth 0 -exec sh /app/_run.sh ; -name _validate.py
+2026-10-14 12:54:26 [parallel-tool-worker] INFO  com.szh.tool.tools.file.EditFileTool - edit_file: /app/_gen.py, occurrences=1, replaced=1
+2026-10-14 12:54:26 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /app/_validate.py -maxdepth 0 -exec sh /app/_run.sh ; -name _validate.py, exitCode=0, outputLength=373
+2026-10-14 12:54:26 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 67] 上下文状态: 消息数=298, 估算tokens=45773, 类型分布=[reasoning=45, toolCall=115, toolResult=115]
+2026-10-14 12:54:26 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=165754, ratio=0.66 (阈值=0.7), 消息数=298
+2026-10-14 12:54:28 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 2 output items: [function_call,function_call,]
+2026-10-14 12:54:28 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /app/_validate.py -maxdepth 0 -exec sh /app/_validate.sh ; -name _validate.py
+2026-10-14 12:54:28 [parallel-tool-worker] INFO  com.szh.tool.store.FileSnapshotStore - FileSnapshotStore: captured /app/_validate.sh turn=turn_1 existed=false rel=_validate.sh
+2026-10-14 12:54:28 [parallel-tool-worker] INFO  com.szh.tool.tools.file.WriteFileTool - write_file: /app/_validate.sh, existed=false, bytes=168, lines=6

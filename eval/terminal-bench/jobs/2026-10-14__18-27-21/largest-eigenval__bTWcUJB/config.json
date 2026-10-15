@@ -1,0 +1,12 @@
+{
+    "task": {
+        "path": "/Users/demus/IdeaProjects/openagent-harness/eval/terminal-bench/terminal-bench-2/largest-eigenval"
+    },
+    "trial_name": "largest-eigenval__bTWcUJB",
+    "trials_dir": "jobs/2026-10-14__18-27-21",
+    "agent": {
+        "name": "openagent_adapter.openagent:OpenAgent",
+        "model_name": "deepseek/deepseek-chat"
+    },
+    "job_id": "0d87aef6-da69-40cc-a4b1-d50670123adc"
+}

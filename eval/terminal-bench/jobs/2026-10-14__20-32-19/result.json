@@ -1,0 +1,39 @@
+{
+    "id": "9fca6299-06ce-4574-ac6c-277995e379d7",
+    "started_at": "2026-10-14T20:32:19.874788",
+    "updated_at": "2026-10-14T20:34:11.911776",
+    "finished_at": "2026-10-14T20:34:11.911776",
+    "n_total_trials": 1,
+    "stats": {
+        "n_completed_trials": 1,
+        "n_errored_trials": 0,
+        "n_running_trials": 0,
+        "n_pending_trials": 0,
+        "n_cancelled_trials": 0,
+        "n_retries": 0,
+        "evals": {
+            "openagent__deepseek-chat__adhoc": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "pass_at_k": {},
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "build-pmars__iTTqkCc"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        },
+        "n_input_tokens": 159958,
+        "n_cache_tokens": 147072,
+        "n_output_tokens": 6872,
+        "cost_usd": null
+    }
+}

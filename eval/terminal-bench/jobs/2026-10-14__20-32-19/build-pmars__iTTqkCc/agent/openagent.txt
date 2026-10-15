@@ -1,0 +1,215 @@
+2026-10-14 12:32:42 [main] INFO  com.szh.utils.ConfigUtil - config file loaded: application.properties, size=80
+2026-10-14 12:32:42 [main] INFO  com.szh.memory.ReflectionPolicy - ReflectionPolicy: trigger=ON_COMPACTION, intervalTurns=5
+2026-10-14 12:32:42 [main] INFO  com.szh.memory.LongTermMemory - LongTermMemory: enabled=false, retrieval=true, reflection=true(trigger=ON_COMPACTION), dedup=true(th=0.72), capacity=1000, storeReady=false
+2026-10-14 12:32:42 [main] INFO  com.szh.mcp.config.McpConfigLoader - mcp config file not found: /root/.openagent/mcp.json (create one to enable MCP servers)
+2026-10-14 12:32:42 [main] INFO  com.szh.store.EventStoreFactory - create event store, engine=FILE
+2026-10-14 12:32:42 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 1] 上下文状态: 消息数=2, 估算tokens=492, 类型分布=[reasoning=0, toolCall=0, toolResult=0]
+2026-10-14 12:32:42 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 首次调用，服务端 token 数未知，使用估算值: 492
+2026-10-14 12:32:42 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=492, ratio=0.00 (阈值=0.7), 消息数=2
+2026-10-14 12:32:44 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 5 output items: [reasoning,message,function_call,function_call,function_call,]
+2026-10-14 12:32:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: pwd
+2026-10-14 12:32:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /app
+2026-10-14 12:32:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /
+2026-10-14 12:32:44 [parallel-tool-worker] INFO  com.szh.tool.security.SandboxFactory - sandbox executor: direct (no OS-level isolation on this platform, rely on permission layer)
+2026-10-14 12:32:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=pwd, exitCode=0, outputLength=5
+2026-10-14 12:32:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /app, exitCode=0, outputLength=255
+2026-10-14 12:32:44 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /, exitCode=0, outputLength=1257
+2026-10-14 12:32:44 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 2] 上下文状态: 消息数=10, 估算tokens=1013, 类型分布=[reasoning=1, toolCall=3, toolResult=3]
+2026-10-14 12:32:44 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=4300, ratio=0.02 (阈值=0.7), 消息数=10
+2026-10-14 12:32:45 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 6 output items: [reasoning,message,function_call,function_call,function_call,function_call,]
+2026-10-14 12:32:45 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /etc/os-release
+2026-10-14 12:32:45 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /app/.agent-data
+2026-10-14 12:32:45 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /etc/apt/sources.list
+2026-10-14 12:32:45 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /etc/apt/sources.list.d
+2026-10-14 12:32:45 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /etc/os-release, exitCode=0, outputLength=286
+2026-10-14 12:32:45 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /etc/apt/sources.list, exitCode=1, outputLength=54
+2026-10-14 12:32:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /app/.agent-data, exitCode=1, outputLength=38
+2026-10-14 12:32:46 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /etc/apt/sources.list.d, exitCode=0, outputLength=152
+2026-10-14 12:32:46 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 3] 上下文状态: 消息数=20, 估算tokens=1385, 类型分布=[reasoning=2, toolCall=7, toolResult=7]
+2026-10-14 12:32:46 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=5113, ratio=0.02 (阈值=0.7), 消息数=20
+2026-10-14 12:32:47 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [function_call,function_call,function_call,]
+2026-10-14 12:32:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /app/.agent-data
+2026-10-14 12:32:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /etc/apt/sources.list.d/debian.sources
+2026-10-14 12:32:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: git --no-pager -C /app status -sb
+2026-10-14 12:32:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /etc/apt/sources.list.d/debian.sources, exitCode=0, outputLength=437
+2026-10-14 12:32:47 [parallel-tool-worker] ERROR com.szh.tool.tools.shell.ShellRunner - execute command failed: git --no-pager -C /app status -sb
+java.io.IOException: Cannot run program "git" (in directory "/app"): Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at com.szh.tool.tools.shell.ShellRunner.run(ShellRunner.java:75) ~[openagent.jar:?]
+	at com.szh.tool.tools.shell.ShellCommandTool.execute(ShellCommandTool.java:68) ~[openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.runSingle(ParallelToolExecutor.java:171) ~[openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.lambda$executeConcurrently$1(ParallelToolExecutor.java:124) ~[openagent.jar:?]
+	at java.base/java.util.concurrent.FutureTask.run(Unknown Source) ~[?:?]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source) ~[?:?]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source) ~[?:?]
+	at java.base/java.lang.Thread.run(Unknown Source) [?:?]
+Caused by: java.io.IOException: Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessImpl.forkAndExec(Native Method) ~[?:?]
+	at java.base/java.lang.ProcessImpl.<init>(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessImpl.start(Unknown Source) ~[?:?]
+	... 10 more
+2026-10-14 12:32:47 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /app/.agent-data, exitCode=0, outputLength=150
+2026-10-14 12:32:47 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 4] 上下文状态: 消息数=26, 估算tokens=1672, 类型分布=[reasoning=2, toolCall=10, toolResult=10]
+2026-10-14 12:32:47 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=5583, ratio=0.02 (阈值=0.7), 消息数=26
+2026-10-14 12:32:48 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 6 output items: [reasoning,message,function_call,function_call,function_call,function_call,]
+2026-10-14 12:32:48 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /etc/apt/sources.list.d/debian.sources
+2026-10-14 12:32:48 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /app/flashpaper.red
+2026-10-14 12:32:48 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /usr/bin
+2026-10-14 12:32:48 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /app/rave.red
+2026-10-14 12:32:49 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /etc/apt/sources.list.d/debian.sources, exitCode=0, outputLength=437
+2026-10-14 12:32:49 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /app/flashpaper.red, exitCode=0, outputLength=1094
+2026-10-14 12:32:49 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /app/rave.red, exitCode=0, outputLength=784
+2026-10-14 12:32:49 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /usr/bin, exitCode=0, outputLength=15119
+2026-10-14 12:32:49 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_00_dwzJHldZVtIKCBMRkeow9290, tool=ls, lines=278, chars=15119
+2026-10-14 12:32:49 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_02_ioQnEJvHBKNxVCsQgRmH1846, tool=cat, lines=67, chars=1094
+2026-10-14 12:32:49 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 5] 上下文状态: 消息数=36, 估算tokens=2988, 类型分布=[reasoning=3, toolCall=14, toolResult=14]
+2026-10-14 12:32:49 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=5949, ratio=0.02 (阈值=0.7), 消息数=36
+2026-10-14 12:32:51 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 11 output items: [reasoning,message,function_call,function_call,function_call,function_call,function_call,function_call,function_call,function_call,function_call,]
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name gcc
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr -name dpkg-buildpackage
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr -name dpkg-source
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name make
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name make, exitCode=0, outputLength=0
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name tar
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name gcc, exitCode=0, outputLength=0
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name xz
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr -name dpkg-source, exitCode=0, outputLength=0
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name dpkg
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr -name dpkg-buildpackage, exitCode=0, outputLength=0
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name curl
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name tar, exitCode=0, outputLength=13
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name wget
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name xz, exitCode=0, outputLength=0
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name dpkg, exitCode=0, outputLength=14
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name curl, exitCode=0, outputLength=0
+2026-10-14 12:32:51 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name wget, exitCode=0, outputLength=0
+2026-10-14 12:32:51 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 6] 上下文状态: 消息数=56, 估算tokens=3499, 类型分布=[reasoning=4, toolCall=23, toolResult=23]
+2026-10-14 12:32:51 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=7907, ratio=0.03 (阈值=0.7), 消息数=56
+2026-10-14 12:32:53 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 5 output items: [reasoning,message,function_call,function_call,function_call,]
+2026-10-14 12:32:53 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la | grep -iE "gcc|make|cc$|g\+\+|python|perl|bzip|gzip|xz|zstd|curl|wget|patch|diff" /usr/bin
+2026-10-14 12:32:53 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /var/lib/apt/lists
+2026-10-14 12:32:53 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /etc/apt/apt.conf.d/01autoremove
+2026-10-14 12:32:53 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /etc/apt/apt.conf.d/01autoremove, exitCode=0, outputLength=399
+2026-10-14 12:32:53 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la | grep -iE "gcc|make|cc$|g\+\+|python|perl|bzip|gzip|xz|zstd|curl|wget|patch|diff" /usr/bin, exitCode=2, outputLength=64
+2026-10-14 12:32:53 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /var/lib/apt/lists, exitCode=0, outputLength=919
+2026-10-14 12:32:53 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 7] 上下文状态: 消息数=64, 估算tokens=4071, 类型分布=[reasoning=5, toolCall=26, toolResult=26]
+2026-10-14 12:32:53 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=8559, ratio=0.03 (阈值=0.7), 消息数=64
+2026-10-14 12:32:57 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 7 output items: [reasoning,message,function_call,function_call,function_call,function_call,function_call,]
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name python3
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name *gcc*
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name cc
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: find /usr/bin -name perl
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name perl, exitCode=0, outputLength=14
+2026-10-14 12:32:57 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: bash
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name python3, exitCode=0, outputLength=17
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name *gcc*, exitCode=0, outputLength=0
+2026-10-14 12:32:57 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=find /usr/bin -name cc, exitCode=0, outputLength=0
+2026-10-14 12:32:57 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 8] 上下文状态: 消息数=76, 估算tokens=4690, 类型分布=[reasoning=6, toolCall=31, toolResult=31]
+2026-10-14 12:32:57 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=9369, ratio=0.04 (阈值=0.7), 消息数=76
+2026-10-14 12:33:01 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:33:01 [parallel-tool-worker] WARN  com.szh.tool.tools.file.WriteFileTool - write_file 参数错误, args={"path": "/etc/apt/sources.list.d/debian-src.sources", "content": "Types: deb-src\nURIs: http://deb.debian.org/debian\nSuites: trixie trixie-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb-src\nURIs: http://deb.debian.org/debian-security\nSuites: trixie-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n"}, reason=路径 /etc/apt/sources.list.d/debian-src.sources 在工作区外，禁止写入（如确需放开请配置 file.tools.allowOutside=true）
+2026-10-14 12:33:01 [parallel-tool-worker] INFO  com.szh.tool.tools.meta.TodoWriteTool - todo_write: session=dab77591f35e4d8f9ff5112fab45b8ab, merge=false, items=7
+2026-10-14 12:33:01 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 9] 上下文状态: 消息数=81, 估算tokens=5462, 类型分布=[reasoning=7, toolCall=33, toolResult=33]
+2026-10-14 12:33:01 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=10064, ratio=0.04 (阈值=0.7), 消息数=81
+2026-10-14 12:33:08 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,message,function_call,]
+2026-10-14 12:33:08 [main] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: mvn -B -version
+2026-10-14 12:33:08 [main] ERROR com.szh.tool.tools.shell.ShellRunner - execute command failed: mvn -B -version
+java.io.IOException: Cannot run program "mvn" (in directory "/app"): Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source) ~[?:?]
+	at com.szh.tool.tools.shell.ShellRunner.run(ShellRunner.java:75) [openagent.jar:?]
+	at com.szh.tool.tools.shell.ShellCommandTool.execute(ShellCommandTool.java:68) [openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.runSingle(ParallelToolExecutor.java:171) [openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.executeConcurrently(ParallelToolExecutor.java:112) [openagent.jar:?]
+	at com.szh.agent.ParallelToolExecutor.executeBatch(ParallelToolExecutor.java:81) [openagent.jar:?]
+	at com.szh.agent.AgentResponseRuntime.executeRoundCalls(AgentResponseRuntime.java:268) [openagent.jar:?]
+	at com.szh.agent.AgentResponseRuntime.run(AgentResponseRuntime.java:141) [openagent.jar:?]
+	at com.szh.cli.Repl.ask(Repl.java:212) [openagent.jar:?]
+	at com.szh.cli.Repl.main(Repl.java:107) [openagent.jar:?]
+Caused by: java.io.IOException: Exec failed, error: 2 (No such file or directory) 
+	at java.base/java.lang.ProcessImpl.forkAndExec(Native Method) ~[?:?]
+	at java.base/java.lang.ProcessImpl.<init>(Unknown Source) ~[?:?]
+	at java.base/java.lang.ProcessImpl.start(Unknown Source) ~[?:?]
+	... 11 more
+2026-10-14 12:33:08 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 10] 上下文状态: 消息数=85, 估算tokens=6747, 类型分布=[reasoning=8, toolCall=34, toolResult=34]
+2026-10-14 12:33:08 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=10973, ratio=0.04 (阈值=0.7), 消息数=85
+2026-10-14 12:33:13 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 7 output items: [reasoning,function_call,function_call,function_call,function_call,function_call,function_call,]
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /app/.agent-data/tool-results
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /logs
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /opt
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /installed-agent
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /opt, exitCode=0, outputLength=192
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /usr/local/bin
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /logs, exitCode=0, outputLength=243
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /root
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /installed-agent, exitCode=0, outputLength=95
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /app/.agent-data/tool-results, exitCode=0, outputLength=170
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /usr/local/bin, exitCode=0, outputLength=95
+2026-10-14 12:33:13 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /root, exitCode=0, outputLength=295
+2026-10-14 12:33:13 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 11] 上下文状态: 消息数=98, 估算tokens=7651, 类型分布=[reasoning=9, toolCall=40, toolResult=40]
+2026-10-14 12:33:13 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=12343, ratio=0.05 (阈值=0.7), 消息数=98
+2026-10-14 12:33:15 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 6 output items: [reasoning,function_call,function_call,function_call,function_call,function_call,]
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /logs/verifier
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /logs/agent
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /logs/artifacts
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /opt/openagent
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /opt/openagent, exitCode=0, outputLength=175
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /logs/artifacts, exitCode=0, outputLength=95
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /logs/verifier, exitCode=0, outputLength=95
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /opt/jre
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /logs/agent, exitCode=0, outputLength=202
+2026-10-14 12:33:15 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /opt/jre, exitCode=0, outputLength=384
+2026-10-14 12:33:15 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 12] 上下文状态: 消息数=109, 估算tokens=8124, 类型分布=[reasoning=10, toolCall=45, toolResult=45]
+2026-10-14 12:33:15 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=13537, ratio=0.05 (阈值=0.7), 消息数=109
+2026-10-14 12:33:16 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,function_call,function_call,]
+2026-10-14 12:33:16 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /logs/agent/setup
+2026-10-14 12:33:16 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: head -n 100 /logs/agent/openagent.txt
+2026-10-14 12:33:16 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=head -n 100 /logs/agent/openagent.txt, exitCode=0, outputLength=14018
+2026-10-14 12:33:16 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /logs/agent/setup, exitCode=0, outputLength=93
+2026-10-14 12:33:16 [main] INFO  com.szh.tool.store.ToolResultStore - ToolResultStore: stored resultId=call_01_ixUpg2EwlomHzqE79GSY2414, tool=head, lines=101, chars=14018
+2026-10-14 12:33:16 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 13] 上下文状态: 消息数=114, 估算tokens=8757, 类型分布=[reasoning=11, toolCall=47, toolResult=47]
+2026-10-14 12:33:16 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=14294, ratio=0.06 (阈值=0.7), 消息数=114
+2026-10-14 12:33:18 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 5 output items: [reasoning,message,function_call,function_call,function_call,]
+2026-10-14 12:33:18 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: ls -la /root/.openagent
+2026-10-14 12:33:18 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: cat /root/.openagent/mcp.json
+2026-10-14 12:33:18 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell exec: grep -in shell|Shell|exec|tool call|toolName|function_call /logs/agent/openagent.txt
+2026-10-14 12:33:18 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=cat /root/.openagent/mcp.json, exitCode=1, outputLength=58
+2026-10-14 12:33:18 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=ls -la /root/.openagent, exitCode=0, outputLength=192
+2026-10-14 12:33:18 [parallel-tool-worker] INFO  com.szh.tool.tools.shell.ShellCommandTool - shell done: cmd=grep -in shell|Shell|exec|tool call|toolName|function_call /logs/agent/openagent.txt, exitCode=0, outputLength=194
+2026-10-14 12:33:18 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 14] 上下文状态: 消息数=122, 估算tokens=9177, 类型分布=[reasoning=12, toolCall=50, toolResult=50]
+2026-10-14 12:33:18 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=15138, ratio=0.06 (阈值=0.7), 消息数=122
+2026-10-14 12:33:21 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 3 output items: [reasoning,message,function_call,]
+2026-10-14 12:33:21 [main] INFO  com.szh.agent.AgentResponseRuntime - [Round 15] 上下文状态: 消息数=126, 估算tokens=13305, 类型分布=[reasoning=13, toolCall=51, toolResult=51]
+2026-10-14 12:33:21 [main] INFO  com.szh.context.compaction.ContextCompactionManager - [Compaction] 检查: tokens=15666, ratio=0.06 (阈值=0.7), 消息数=126
+2026-10-14 12:33:26 [main] INFO  com.szh.model.OpenAiCompatResponseModel - Model returned 9 output items: [reasoning,message,function_call,function_call,function_call,function_call,function_call,function_call,function_call,]
+2026-10-14 12:33:26 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: shell
+2026-10-14 12:33:26 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: sh
+2026-10-14 12:33:26 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: execute
+2026-10-14 12:33:26 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: run
+2026-10-14 12:33:26 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: run_command
+2026-10-14 12:33:26 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: terminal
+2026-10-14 12:33:26 [parallel-tool-worker] WARN  com.szh.agent.ParallelToolExecutor - tool not found: exec
+2026-10-14 12:33:26 [main] WARN  com.szh.agent.LoopGuard - [LoopGuard] advise: 你已连续 3 次工具调用故障。这些失败多属参数错误 / 权限拦截 / 工具不存在类问题，原样重试不会成功——请修正参数、确认工具名，或改用其他工具与方法，不要重复同一无效调用。
+2026-10-14 12:33:26 [main] WARN  com.szh.agent.LoopGuard - [LoopGuard] consecutive-failures: 工具连续故障 5 次（阈值 5），已熔断（此前已提示模型改变策略但未见成效）
+2026-10-14 12:33:26 [main] INFO  com.szh.trace.RunTrace - printTraceByRunId RunTrace [runId=b18558baedd44df6a331232a1d1cb0a0, sessionId=dab77591f35e4d8f9ff5112fab45b8ab, startTime=1791981162596, endTime=1791981206720]
+  Steps:
+    Step 1 [startTime=1791981162640, endTime=1791981164505, tokens=4408(prompt=4300, completion=108)]
+    Step 2 [startTime=1791981164505, endTime=1791981166088, tokens=5344(prompt=5113, completion=231)]
+    Step 3 [startTime=1791981166088, endTime=1791981167383, tokens=5695(prompt=5583, completion=112)]
+    Step 4 [startTime=1791981167383, endTime=1791981169181, tokens=6177(prompt=5949, completion=228)]
+    Step 5 [startTime=1791981169181, endTime=1791981171910, tokens=8423(prompt=7907, completion=516)]
+    Step 6 [startTime=1791981171910, endTime=1791981173906, tokens=8813(prompt=8559, completion=254)]
+    Step 7 [startTime=1791981173906, endTime=1791981177402, tokens=9991(prompt=9369, completion=622)]
+    Step 8 [startTime=1791981177402, endTime=1791981181108, tokens=10788(prompt=10064, completion=724)]
+    Step 9 [startTime=1791981181108, endTime=1791981188897, tokens=12300(prompt=10973, completion=1327)]
+    Step 10 [startTime=1791981188897, endTime=1791981193495, tokens=12974(prompt=12343, completion=631)]
+    Step 11 [startTime=1791981193495, endTime=1791981195399, tokens=13817(prompt=13537, completion=280)]
+    Step 12 [startTime=1791981195399, endTime=1791981196394, tokens=14437(prompt=14294, completion=143)]
+    Step 13 [startTime=1791981196394, endTime=1791981198392, tokens=15466(prompt=15138, completion=328)]
+    Step 14 [startTime=1791981198392, endTime=1791981201678, tokens=16178(prompt=15666, completion=512)]
+    Step 15 [startTime=1791981201678, endTime=1791981206719, tokens=22019(prompt=21163, completion=856)]
+  TokenUsage[cumulative: prompt=159958, completion=6872, total=166830, cached=147072, steps=15, currentCtx=21163]
+
+?????? 5 ???? 5???????????????????????
+OPENAGENT_METRICS input=159958 output=6872 total=166830 cached=147072 rounds=15 elapsed_ms=44502

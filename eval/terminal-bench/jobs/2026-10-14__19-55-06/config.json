@@ -1,0 +1,14 @@
+{
+    "job_name": "2026-10-14__19-55-06",
+    "agents": [
+        {
+            "name": "openagent_adapter.openagent:OpenAgent",
+            "model_name": "deepseek/deepseek-chat"
+        }
+    ],
+    "tasks": [
+        {
+            "path": "/Users/demus/IdeaProjects/openagent-harness/eval/terminal-bench/terminal-bench-2/largest-eigenval"
+        }
+    ]
+}
