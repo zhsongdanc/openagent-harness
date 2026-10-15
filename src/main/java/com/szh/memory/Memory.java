@@ -36,6 +36,12 @@ public class Memory {
     /** 产生该记忆的来源会话 id（反思抽取时写入），可为空 */
     private String sourceSessionId;
 
+    /**
+     * 项目归属标识（规范化的 workspace 真实路径）。写入时由 LongTermMemory 统一盖章；
+     * 空串表示历史遗留、无法归属的行，按「跨项目可见」保守处理。GLOBAL 作用域不依赖此字段。
+     */
+    private String projectKey;
+
     private long createdAt;
 
     private long updatedAt;

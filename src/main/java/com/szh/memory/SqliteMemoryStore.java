@@ -22,7 +22,7 @@ import java.util.List;
  * <p>
  * 设计要点：
  * <ul>
- *   <li><b>单表 FTS5</b>：正文/标题/关键词建全文索引，元数据（id/category/scope/时间戳）以 UNINDEXED 列存放，
+ *   <li><b>单表 FTS5</b>：正文/标题/关键词建全文索引，元数据（id/category/scope/project_key/时间戳）以 UNINDEXED 列存放，
  *       一张虚拟表即为唯一真相源，避免外表 + 触发器的同步复杂度；</li>
  *   <li><b>trigram 分词</b>：默认 {@code tokenize='trigram'}，对中文（CJK）友好——把任意 3 字子串作为词元，
  *       MATCH 退化为子串匹配；可用 {@code memory.sqlite.fts.tokenizer} 切换；</li>
@@ -48,13 +48,13 @@ public class SqliteMemoryStore implements MemoryStore {
 
     /** 统一列顺序，供建表/插入/查询复用 */
     private static final String COLS =
-            "id, title, content, keywords, category, scope, source_session_id, created_at, updated_at";
+            "id, title, content, keywords, category, scope, source_session_id, created_at, updated_at, project_key";
 
     private static final String INSERT_SQL =
-            "INSERT INTO " + TABLE + " (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?)";
+            "INSERT INTO " + TABLE + " (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?)";
 
     private static final String SELECT_COLS =
-            "SELECT id, title, content, keywords, category, scope, source_session_id, created_at, updated_at";
+            "SELECT id, title, content, keywords, category, scope, source_session_id, created_at, updated_at, project_key";
 
     private final String jdbcUrl;
     private final boolean trigram;
@@ -83,7 +83,24 @@ public class SqliteMemoryStore implements MemoryStore {
 
     private void initSchema(String tokenizer) {
         String ddl = "CREATE VIRTUAL TABLE IF NOT EXISTS " + TABLE + " USING fts5("
-                + "id UNINDEXED, "
+                + fts5Columns(tokenizer)
+                + ")";
+        try (Connection c = open()) {
+            try (Statement st = c.createStatement()) {
+                st.execute(ddl);
+            }
+            // 旧库（9 列）缺项目归属列：FTS5 不支持 ADD COLUMN，需检测到后重建迁移
+            if (!hasColumn(c, "project_key")) {
+                migrateAddProjectKey(c, tokenizer);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("init FTS5 schema failed: " + jdbcUrl, e);
+        }
+    }
+
+    /** FTS5 列定义：title/content/keywords 建全文索引，其余（含项目归属 project_key）以 UNINDEXED 存放 */
+    private static String fts5Columns(String tokenizer) {
+        return "id UNINDEXED, "
                 + "title, "
                 + "content, "
                 + "keywords, "
@@ -92,12 +109,43 @@ public class SqliteMemoryStore implements MemoryStore {
                 + "source_session_id UNINDEXED, "
                 + "created_at UNINDEXED, "
                 + "updated_at UNINDEXED, "
-                + "tokenize = '" + tokenizer + "'"
-                + ")";
-        try (Connection c = open(); Statement st = c.createStatement()) {
-            st.execute(ddl);
+                + "project_key UNINDEXED, "
+                + "tokenize = '" + tokenizer + "'";
+    }
+
+    /** PRAGMA table_info 检查虚拟表是否已有某列（FTS5 虚拟表同样适用） */
+    private static boolean hasColumn(Connection c, String column) throws SQLException {
+        try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("PRAGMA table_info(" + TABLE + ")")) {
+            while (rs.next()) {
+                if (column.equals(rs.getString("name"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 旧库（9 列）补 project_key 的迁移：建新表→拷贝→删旧表→改名，事务包裹保证原子性。
+     * 存量行 project_key 置空串，语义为「未归属、跨项目可见」——保守保留不丢弃；
+     * 后续被某项目更新命中时（merge 空键取新值）才会收编到该项目名下。
+     */
+    private void migrateAddProjectKey(Connection c, String tokenizer) throws SQLException {
+        String tmp = TABLE + "_v2";
+        String legacyCols = "id, title, content, keywords, category, scope, source_session_id, created_at, updated_at";
+        c.setAutoCommit(false);
+        try (Statement st = c.createStatement()) {
+            st.execute("CREATE VIRTUAL TABLE " + tmp + " USING fts5(" + fts5Columns(tokenizer) + ")");
+            st.execute("INSERT INTO " + tmp + " (" + legacyCols + ", project_key) SELECT " + legacyCols + ", '' FROM " + TABLE);
+            st.execute("DROP TABLE " + TABLE);
+            st.execute("ALTER TABLE " + tmp + " RENAME TO " + TABLE);
+            c.commit();
+            log.info("SqliteMemoryStore: schema migrated, added project_key column (unindexed)");
         } catch (SQLException e) {
-            throw new IllegalStateException("init FTS5 schema failed: " + jdbcUrl, e);
+            c.rollback();
+            throw e;
+        } finally {
+            c.setAutoCommit(true);
         }
     }
 
@@ -131,6 +179,7 @@ public class SqliteMemoryStore implements MemoryStore {
                 ps.setString(7, nvl(memory.getSourceSessionId()));
                 ps.setString(8, Long.toString(memory.getCreatedAt()));
                 ps.setString(9, Long.toString(memory.getUpdatedAt()));
+                ps.setString(10, nvl(memory.getProjectKey()));
                 ps.executeUpdate();
             }
         } catch (SQLException e) {
@@ -176,42 +225,66 @@ public class SqliteMemoryStore implements MemoryStore {
     }
 
     @Override
-    public List<Memory> search(String query, int topK, MemoryScope scope) {
+    public List<Memory> search(String query, int topK, MemoryScope scope, String projectKey) {
         if (topK <= 0) {
             return new ArrayList<>();
         }
-        // 无检索词：按最近召回（可带 scope）
+        // 无检索词：按最近召回（可带 scope + 项目可见性）
         if (query == null || query.isBlank()) {
-            return queryRecent(scope, topK);
+            return queryRecent(scope, topK, projectKey);
         }
         // 优先走 FTS5 MATCH（bm25 相关度排序）；trigram 无法匹配的短查询（如 2 字中文词）自动回退 LIKE 子串匹配
         String match = buildMatchExpr(query);
         if (match != null) {
-            List<Memory> hits = queryMatch(match, scope, topK);
+            List<Memory> hits = queryMatch(match, scope, topK, projectKey);
             if (!hits.isEmpty()) {
                 return hits;
             }
         }
-        return queryLike(query, scope, topK);
+        return queryLike(query, scope, topK, projectKey);
     }
 
-    private List<Memory> queryMatch(String match, MemoryScope scope, int topK) {
-        StringBuilder sql = new StringBuilder(SELECT_COLS)
-                .append(", bm25(").append(TABLE).append(") AS score FROM ").append(TABLE)
-                .append(" WHERE ").append(TABLE).append(" MATCH ?");
-        if (scope != null) {
-            sql.append(" AND scope = ?");
+    /**
+     * 追加项目可见性条件片段（语义见 {@link MemoryStore#search(String, int, MemoryScope, String)}）：
+     * projectKey 为空不限项目；GLOBAL 天然跨项目；scope 不限时只放行 GLOBAL + 本项目/未归属行，
+     * 防止其他项目的记忆泄进注入召回；scope 显式 PROJECT/SESSION 时限定本项目或未归属行。
+     */
+    private static void addVisibilityCond(List<String> conds, List<Object> params, MemoryScope scope, String projectKey) {
+        if (projectKey == null || projectKey.isBlank() || scope == MemoryScope.GLOBAL) {
+            return;
         }
+        if (scope == null) {
+            conds.add("(scope = 'GLOBAL' OR project_key = ? OR project_key = '')");
+        } else {
+            conds.add("(project_key = ? OR project_key = '')");
+        }
+        params.add(projectKey);
+    }
+
+    /** 前 N 个参数一律按字符串绑定（均为文本条件），末位固定是 LIMIT */
+    private static void bindParams(PreparedStatement ps, List<Object> params, int limit) throws SQLException {
+        for (int i = 0; i < params.size(); i++) {
+            ps.setString(i + 1, String.valueOf(params.get(i)));
+        }
+        ps.setInt(params.size() + 1, limit);
+    }
+
+    private List<Memory> queryMatch(String match, MemoryScope scope, int topK, String projectKey) {
+        List<String> conds = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        conds.add(TABLE + " MATCH ?");
+        params.add(match);
+        if (scope != null) {
+            conds.add("scope = ?");
+            params.add(scope.name());
+        }
+        addVisibilityCond(conds, params, scope, projectKey);
         // bm25 值越小越相关，升序即相关度降序
-        sql.append(" ORDER BY score LIMIT ?");
+        String sql = SELECT_COLS + ", bm25(" + TABLE + ") AS score FROM " + TABLE
+                + " WHERE " + String.join(" AND ", conds) + " ORDER BY score LIMIT ?";
         List<Memory> result = new ArrayList<>();
-        try (Connection c = open(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
-            int idx = 1;
-            ps.setString(idx++, match);
-            if (scope != null) {
-                ps.setString(idx++, scope.name());
-            }
-            ps.setInt(idx, topK);
+        try (Connection c = open(); PreparedStatement ps = c.prepareStatement(sql)) {
+            bindParams(ps, params, topK);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     result.add(mapRow(rs));
@@ -228,24 +301,25 @@ public class SqliteMemoryStore implements MemoryStore {
      * 命中 content/title/keywords 任一即算匹配，按更新时间倒序。
      * trigram 分词器下 SQLite 会对 &gt;=3 字的 LIKE 子串走索引优化。
      */
-    private List<Memory> queryLike(String query, MemoryScope scope, int topK) {
+    private List<Memory> queryLike(String query, MemoryScope scope, int topK, String projectKey) {
         String like = "%" + escapeLike(query.trim()) + "%";
-        StringBuilder sql = new StringBuilder(SELECT_COLS).append(" FROM ").append(TABLE)
-                .append(" WHERE (content LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR keywords LIKE ? ESCAPE '\\')");
+        List<String> conds = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        conds.add("(content LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR keywords LIKE ? ESCAPE '\\')");
+        params.add(like);
+        params.add(like);
+        params.add(like);
         if (scope != null) {
-            sql.append(" AND scope = ?");
+            conds.add("scope = ?");
+            params.add(scope.name());
         }
-        sql.append(" ORDER BY CAST(updated_at AS INTEGER) DESC LIMIT ?");
+        addVisibilityCond(conds, params, scope, projectKey);
+        String sql = SELECT_COLS + " FROM " + TABLE
+                + " WHERE " + String.join(" AND ", conds)
+                + " ORDER BY CAST(updated_at AS INTEGER) DESC LIMIT ?";
         List<Memory> result = new ArrayList<>();
-        try (Connection c = open(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
-            int idx = 1;
-            ps.setString(idx++, like);
-            ps.setString(idx++, like);
-            ps.setString(idx++, like);
-            if (scope != null) {
-                ps.setString(idx++, scope.name());
-            }
-            ps.setInt(idx, topK);
+        try (Connection c = open(); PreparedStatement ps = c.prepareStatement(sql)) {
+            bindParams(ps, params, topK);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     result.add(mapRow(rs));
@@ -259,25 +333,28 @@ public class SqliteMemoryStore implements MemoryStore {
 
     @Override
     public List<Memory> listRecent(int limit) {
-        return queryRecent(null, limit);
+        return queryRecent(null, limit, null);
     }
 
-    private List<Memory> queryRecent(MemoryScope scope, int limit) {
+    private List<Memory> queryRecent(MemoryScope scope, int limit, String projectKey) {
         List<Memory> result = new ArrayList<>();
         if (limit <= 0) {
             return result;
         }
-        StringBuilder sql = new StringBuilder(SELECT_COLS).append(" FROM ").append(TABLE);
+        List<String> conds = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
         if (scope != null) {
-            sql.append(" WHERE scope = ?");
+            conds.add("scope = ?");
+            params.add(scope.name());
+        }
+        addVisibilityCond(conds, params, scope, projectKey);
+        StringBuilder sql = new StringBuilder(SELECT_COLS).append(" FROM ").append(TABLE);
+        if (!conds.isEmpty()) {
+            sql.append(" WHERE ").append(String.join(" AND ", conds));
         }
         sql.append(" ORDER BY CAST(updated_at AS INTEGER) DESC LIMIT ?");
         try (Connection c = open(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
-            int idx = 1;
-            if (scope != null) {
-                ps.setString(idx++, scope.name());
-            }
-            ps.setInt(idx, limit);
+            bindParams(ps, params, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     result.add(mapRow(rs));
@@ -339,6 +416,7 @@ public class SqliteMemoryStore implements MemoryStore {
         m.setCategory(MemoryCategory.from(rs.getString("category")));
         m.setScope(MemoryScope.from(rs.getString("scope")));
         m.setSourceSessionId(rs.getString("source_session_id"));
+        m.setProjectKey(rs.getString("project_key"));
         m.setCreatedAt(parseLong(rs.getString("created_at")));
         m.setUpdatedAt(parseLong(rs.getString("updated_at")));
         return m;

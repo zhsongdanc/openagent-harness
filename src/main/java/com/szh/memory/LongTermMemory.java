@@ -6,6 +6,8 @@ import com.szh.context.dto.SystemMessageItem;
 import com.szh.utils.ConfigUtil;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -57,6 +59,9 @@ public class LongTermMemory {
     private final int reflectionShutdownTimeoutSeconds;
     /** 单线程守护执行器：串行跑异步反思，避免与主对话争抢并发的 LLM 调用；懒创建 */
     private volatile ExecutorService reflectionExecutor;
+    /** 项目标识缓存：仅当 project.workspace 原始值变化时重算真实路径（toRealPath 是磁盘操作） */
+    private volatile String cachedWorkspaceRaw;
+    private volatile String cachedProjectKey;
 
     private LongTermMemory() {
         this.enabled = ConfigUtil.getBoolean("memory.enabled", true);
@@ -111,6 +116,38 @@ public class LongTermMemory {
         return store;
     }
 
+    // ---------------- 项目归属 ----------------
+
+    /**
+     * 当前项目标识：{@code project.workspace} 规范化后的真实路径（macOS /tmp 等符号链接必须
+     * toRealPath，否则同一目录会被判为两个项目）。每次调用实时解析而非构造期固化：单例跨 REPL
+     * 重启/测试切仓复用同一 JVM，workspace 可能变；与 InstructionMemoryLoader 同源取值。
+     */
+    private String resolveProjectKey() {
+        String raw = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        if (raw.equals(cachedWorkspaceRaw)) {
+            return cachedProjectKey;
+        }
+        String key;
+        try {
+            key = Path.of(raw).toRealPath().toString();
+        } catch (IOException | RuntimeException e) {
+            key = Path.of(raw).toAbsolutePath().normalize().toString();
+        }
+        cachedWorkspaceRaw = raw;
+        cachedProjectKey = key;
+        return key;
+    }
+
+    /** 本项目可见的行：GLOBAL、未归属（历史遗留空键）或属于当前项目 */
+    private static boolean visibleToProject(Memory m, String projectKey) {
+        if (m.getScope() == MemoryScope.GLOBAL) {
+            return true;
+        }
+        String key = m.getProjectKey();
+        return key == null || key.isBlank() || key.equals(projectKey);
+    }
+
     // ---------------- 写入 ----------------
 
     public String remember(Memory memory) {
@@ -119,6 +156,10 @@ public class LongTermMemory {
             return null;
         }
         try {
+            // 统一盖章项目归属（反思/工具等所有写入口都经过这里）：缺了它，PROJECT 记忆无从判定属于哪个仓库
+            if (memory.getProjectKey() == null || memory.getProjectKey().isBlank()) {
+                memory.setProjectKey(resolveProjectKey());
+            }
             Memory target = memory;
             if (dedupEnabled) {
                 Memory dup = findDuplicate(memory);
@@ -137,12 +178,14 @@ public class LongTermMemory {
     }
 
     /**
-     * 在同作用域、同分类的既有记忆里找近似重复项：先用检索拉候选，再逐一算相似度，
-     * 取超过阈值的最高分者；找不到或异常返回 null（即按新记忆插入）。
+     * 在同作用域、同分类、且项目可见的既有记忆里找近似重复项：先用检索拉候选（带项目过滤，
+     * 防止跨项目 merge 覆盖其他仓库的记忆），再逐一算相似度，取超过阈值的最高分者；
+     * 找不到或异常返回 null（即按新记忆插入）。
      */
     private Memory findDuplicate(Memory incoming) {
         try {
-            List<Memory> candidates = store.search(buildDedupQuery(incoming), dedupCandidates, incoming.getScope());
+            List<Memory> candidates = store.search(buildDedupQuery(incoming), dedupCandidates,
+                    incoming.getScope(), resolveProjectKey());
             Memory best = null;
             double bestScore = 0d;
             for (Memory c : candidates) {
@@ -181,6 +224,9 @@ public class LongTermMemory {
         merged.setKeywords(unionKeywords(old.getKeywords(), incoming.getKeywords()));
         merged.setSourceSessionId(incoming.getSourceSessionId() != null
                 ? incoming.getSourceSessionId() : old.getSourceSessionId());
+        // 项目归属：旧行已有主则继承（同项目才会命中去重），遗留空键收编为写入方项目
+        merged.setProjectKey(old.getProjectKey() != null && !old.getProjectKey().isBlank()
+                ? old.getProjectKey() : incoming.getProjectKey());
         return merged;
     }
 
@@ -219,24 +265,32 @@ public class LongTermMemory {
     }
 
     /**
-     * 容量淘汰：超过上限时按更新时间从旧到新删除多余条目（listRecent 为最新在前，尾部即最旧）
+     * 容量淘汰：按「当前项目可见集」分桶计数，超过上限时淘汰可见集中最旧的条目
+     * （listRecent 为最新在前，尾部即最旧）。全库单一计数会让高频写入的仓库挤掉
+     * 其他仓库的记忆，故每次写入只按当前项目可见集（GLOBAL + 本项目 + 未归属行）计数淘汰。
      */
     private void evictIfOverCapacity() {
         if (capacityMax <= 0) {
             return;
         }
         try {
-            int total = store.count();
-            if (total <= capacityMax) {
+            String projectKey = resolveProjectKey();
+            List<Memory> visible = new ArrayList<>();
+            for (Memory m : store.listRecent(store.count())) {
+                if (visibleToProject(m, projectKey)) {
+                    visible.add(m);
+                }
+            }
+            if (visible.size() <= capacityMax) {
                 return;
             }
-            List<Memory> all = store.listRecent(total);
             int removed = 0;
-            for (int i = capacityMax; i < all.size(); i++) {
-                store.deleteById(all.get(i).getId());
+            for (int i = capacityMax; i < visible.size(); i++) {
+                store.deleteById(visible.get(i).getId());
                 removed++;
             }
-            log.info("LongTermMemory: evicted {} oldest memories (capacity={})", removed, capacityMax);
+            log.info("LongTermMemory: evicted {} oldest visible memories (project={}, capacity={})",
+                    removed, projectKey, capacityMax);
         } catch (Throwable t) {
             log.error("LongTermMemory: evict failed", t);
         }
@@ -269,7 +323,8 @@ public class LongTermMemory {
         }
         int k = limit > 0 ? limit : topK;
         try {
-            return store.search(query, k, scope);
+            // 带上当前项目可见性：其他仓库的 PROJECT/SESSION 记忆不得泄进本项目 prompt
+            return store.search(query, k, scope, resolveProjectKey());
         } catch (Throwable t) {
             log.error("LongTermMemory: recall failed, query={}", query, t);
             return Collections.emptyList();

@@ -1,0 +1,123 @@
+{
+    "id": "66317234-849f-4f50-96bd-4e1a58e2bced",
+    "task_name": "terminal-bench/largest-eigenval",
+    "trial_name": "largest-eigenval__4FZWGqq",
+    "trial_uri": "file:///Users/demus/IdeaProjects/openagent-harness/eval/terminal-bench/jobs/2026-10-15__18-11-07/largest-eigenval__4FZWGqq",
+    "task_id": {
+        "path": "/Users/demus/IdeaProjects/openagent-harness/eval/terminal-bench/terminal-bench-2/largest-eigenval"
+    },
+    "source": null,
+    "task_checksum": "353ec6163a2a932304b0235d7d919a3e43f41d220964834e48ed315b20c5df07",
+    "config": {
+        "task": {
+            "path": "/Users/demus/IdeaProjects/openagent-harness/eval/terminal-bench/terminal-bench-2/largest-eigenval",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "largest-eigenval__4FZWGqq",
+        "trials_dir": "jobs/2026-10-15__18-11-07",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "openagent_adapter.openagent:OpenAgent",
+            "import_path": null,
+            "model_name": "deepseek/deepseek-chat",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "ad3dfae7-1593-4ec7-821c-5b2597e2390f",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "openagent",
+        "version": "1.0.0",
+        "model_info": {
+            "name": "deepseek-chat",
+            "provider": "deepseek"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 1002534,
+        "n_cache_tokens": 980736,
+        "n_output_tokens": 59714,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "openagent_total_tokens": 1062248,
+            "openagent_rounds": 32,
+            "openagent_elapsed_ms": 408827
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-15T10:11:07.798880Z",
+    "finished_at": "2026-10-15T10:18:12.872658Z",
+    "environment_setup": {
+        "started_at": "2026-10-15T10:11:07.829717Z",
+        "finished_at": "2026-10-15T10:11:08.849809Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-15T10:11:08.849864Z",
+        "finished_at": "2026-10-15T10:11:10.644067Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-15T10:11:10.644341Z",
+        "finished_at": "2026-10-15T10:18:01.382606Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-15T10:18:02.029561Z",
+        "finished_at": "2026-10-15T10:18:09.313974Z"
+    },
+    "step_results": null
+}
