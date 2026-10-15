@@ -7,6 +7,7 @@ import com.szh.agent.verify.VerifyConfig;
 import com.szh.agent.verify.VerifyConfigLoader;
 import com.szh.agent.verify.VerifyResult;
 import com.szh.agent.verify.Verifier;
+import com.szh.context.InstructionMemoryLoader;
 import com.szh.event.Event;
 import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.TodoUpdatedEvent;
@@ -30,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -61,6 +63,11 @@ public class Repl {
     private enum Mode {
         CHAT, RESPONSE
     }
+
+    /**
+     * 项目层指令记忆开关（与 {@code InstructionMemoryLoader} 同一 key，-D 优先于配置文件）
+     */
+    private static final String PROJECT_MEMORY_KEY = "memory.instruction.project.enabled";
 
     private final BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 
@@ -96,6 +103,10 @@ public class Repl {
                     mode = parsed;
                 }
                 case "--prompt" -> oneShot = next(args, ++i, "--prompt");
+                case "--no-project-memory" ->
+                        // 不加载任何仓库的项目层 AGENTS.md：在无关工程/评测任务里跑时，
+                        // 项目 internals 对当前任务纯属噪音，还会挤占压缩预算
+                        System.setProperty(PROJECT_MEMORY_KEY, "false");
                 default -> log.warn("忽略未知参数: {}", args[i]);
             }
         }
@@ -349,6 +360,7 @@ public class Repl {
                 }
             }
             case "/model" -> printModel();
+            case "/memory" -> printMemory();
             case "/todo" -> {
                 String rendered = TodoStore.get().render(sessionId);
                 System.out.println(rendered.isEmpty() ? "（当前无待办清单）" : rendered);
@@ -520,6 +532,51 @@ public class Repl {
         return armed ? "on(" + cfg.getCommands().size() + " 命令)" : "off";
     }
 
+    /**
+     * 项目层指令记忆是否武装（-D/配置双通道，与子 agent 默认构造读同一个值）
+     */
+    private static boolean projectMemoryEnabled() {
+        return ConfigUtil.getBoolean(PROJECT_MEMORY_KEY, true);
+    }
+
+    /**
+     * 记忆状态一行摘要：已装配层数 + 估算 token，让用户一眼看到常驻 system prompt 里项目记忆占多少
+     */
+    private String memoryStatusText() {
+        InstructionMemoryLoader.Assembly assembly = InstructionMemoryLoader.assemble(projectMemoryEnabled());
+        return assembly.includedCount() + "层/≈" + assembly.estimatedTokens() + "token"
+                + (assembly.skippedCount() > 0 ? "（跳过 " + assembly.skippedCount() + "）" : "");
+    }
+
+    /**
+     * {@code /memory}：逐层展示分层指令记忆的装配结果——哪层从哪来、多少字符、被哪道闸门跳过及原因，
+     * 末尾给总长度与估算 token。用于回答“AGENTS.md 到底生效了没”与“常驻上下文有多贵”这类问题，
+     * 把只能靠猜的 prompt 装配变成可观测的。估算仅看量级，权威数字在 {@code TokenUsageEvent} 的 prompt/cached。
+     */
+    private void printMemory() {
+        String workspace = ConfigUtil.get("project.workspace", System.getProperty("user.dir"));
+        InstructionMemoryLoader.Assembly assembly = InstructionMemoryLoader.assemble(projectMemoryEnabled());
+        System.out.println("分层指令记忆装配（workspace=" + workspace + "）：");
+        assembly.layers().forEach(layer -> System.out.println(layer.describe()));
+        System.out.println("合计：纳入 " + assembly.includedCount() + " 层 / 跳过 " + assembly.skippedCount()
+                + " 层，字符=" + assembly.prompt().length()
+                + "，估算 token≈" + assembly.estimatedTokens());
+        Path l1Dir = Path.of(workspace).resolve("docs").resolve("agents");
+        if (Files.isDirectory(l1Dir)) {
+            long count = countL1Docs(l1Dir);
+            System.out.println("L1 按需文档：" + l1Dir + " 共 " + count + " 篇（不常驻，命中任务时才 read_file）");
+        }
+    }
+
+    private static long countL1Docs(Path dir) {
+        try (var stream = Files.list(dir)) {
+            return stream.filter(p -> p.getFileName().toString().endsWith(".md")).count();
+        } catch (Exception e) {
+            log.warn("列出 L1 文档失败: {}", dir, e);
+            return 0;
+        }
+    }
+
     private void printModel() {
         StoreEnum engine = EventStoreFactory.getStoreEngine();
         System.out.println("provider=" + ConfigUtil.get("model.provider", "deepseek")
@@ -528,7 +585,8 @@ public class Repl {
                 + " | response.model=" + ConfigUtil.get("model.response.name", "(默认)")
                 + " | store=" + engine
                 + " | stream=" + streamEnabled
-                + " | verify=" + verifyStatusText());
+                + " | verify=" + verifyStatusText()
+                + " | memory=" + memoryStatusText());
     }
 
     private void printBanner() {
@@ -538,6 +596,7 @@ public class Repl {
         System.out.println(" runtime : " + mode + "   store: " + EventStoreFactory.getStoreEngine());
         System.out.println(" mode    : " + AgentModeStore.get().get(sessionId));
         System.out.println(" verify  : " + verifyStatusText());
+        System.out.println(" memory  : " + memoryStatusText() + "（/memory 看明细）");
         System.out.println(" 输入自然语言对话，/help 查看命令，/exit 退出");
         System.out.println("======================================================");
     }
@@ -552,6 +611,7 @@ public class Repl {
                   /session <id>         恢复指定已持久化 session
                   /runtime [chat|response]  查看/切换运行时链路（共享同一 session 上下文）
                   /model                查看当前 provider/model/store/stream 配置
+                  /memory               查看分层指令记忆装配（哪层生效/被哪道闸门跳过/占多少 token）
                   /todo                 查看当前待办清单（agent 用 todo_write 维护）
                   /mode [plan|normal]   查看/切换运行模式（plan=只读规划，normal=全部工具）
                   /mcp [reload|tools]   查看 MCP Server 状态 / 重载配置 / 列出 MCP 工具

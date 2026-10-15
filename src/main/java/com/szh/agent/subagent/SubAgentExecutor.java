@@ -79,9 +79,10 @@ public class SubAgentExecutor {
                 type.getCode(), childSessionId, childDepth, maxDepth, maxRound);
 
         try {
-            // 独立事件存储 + 独立 AgentState（角色指令追加在分层 system prompt 之后）
+            // 独立事件存储 + 独立 AgentState（角色指令追加在分层 system prompt 之后）；
+            // 项目层指令记忆按类型取舍——纯检索型子 agent 不背宿主 internals，避免派生 N 个就多付 N 份
             EventStore store = EventStoreFactory.createEventStore();
-            AgentState childState = new AgentState(store, type.rolePrompt());
+            AgentState childState = new AgentState(store, type.rolePrompt(), type.carryProjectMemory());
             // 工具白名单 + 深度感知：childDepth 达上限时子 registry 不会再有 dispatch_subagent
             ToolRegistry childRegistry = new ToolRegistry(type.allowedCodes(), childDepth);
 

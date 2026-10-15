@@ -15,7 +15,10 @@ import java.util.stream.Stream;
  *   <li>{@code allowedCodes == null} 表示放开全部工具（general-purpose），
  *       但 dispatch_subagent 是否可得另由 {@code subagent.maxDepth} 深度闸门决定（见 ToolRegistry）；</li>
  *   <li>角色指令追加在分层 system prompt 之后，明确「你是子 agent、独立上下文、只回最终结论」的契约，
- *       避免子 agent 反问用户或把中间产物当结论回传。</li>
+ *       避免子 agent 反问用户或把中间产物当结论回传；</li>
+ *   <li>项目层指令记忆（AGENTS.md）按类型取舍（{@link #carryProjectMemory()}）——纯检索型子 agent
+ *       不回写仓库、也不需要知道宿主项目的框架约定，故不携带；否则每次派生都要多背一份项目记忆，
+ *       并行派生时是 N 倍开销。</li>
  * </ol>
  *
  * @author demussong
@@ -30,6 +33,7 @@ public enum SubAgentType {
     GENERAL_PURPOSE("general-purpose",
             "通用子 agent，拥有全部工具，适合外包一段可独立完成、会产生大量中间产物的子任务（探索、实现、调研）。",
             null,
+            true,
             "你现在是一个被主 agent 派生的【通用子 agent】，运行在独立的上下文窗口中：\n"
                     + "- 你看不到主 agent 的对话历史，只能依据下面这条任务指令独立工作；\n"
                     + "- 你无法向用户提问，遇到歧义时按最合理的假设推进并说明；\n"
@@ -45,6 +49,7 @@ public enum SubAgentType {
             "代码审查子 agent，只读工具（读文件/搜索/repo_map/git 只读查询），审阅代码或改动并给出问题清单，不会修改仓库。",
             Set.of("read_file", "repo_map", "read_tool_result",
                     "grep", "find", "cat", "head", "tail", "ls", "pwd", "git", "git_status"),
+            true,
             "你现在是一个被主 agent 派生的【代码审查子 agent】，运行在独立的上下文窗口中：\n"
                     + "- 你只有只读工具，无法修改任何文件，请专注于审阅与分析；\n"
                     + "- 你无法向用户提问，按任务指令独立审查；\n"
@@ -60,6 +65,7 @@ public enum SubAgentType {
             "代码库探索子 agent，只读检索工具（搜索/读文件/repo_map），用于定位实现、梳理调用链等需大范围翻代码的任务，只回精炼结论。",
             Set.of("read_file", "repo_map", "read_tool_result",
                     "grep", "find", "cat", "head", "tail", "ls", "pwd"),
+            false,
             "你现在是一个被主 agent 派生的【代码库探索子 agent】，运行在独立的上下文窗口中：\n"
                     + "- 你只有只读检索工具，任务是高效定位代码、梳理实现与调用关系；\n"
                     + "- 你无法向用户提问，按任务指令独立探索；\n"
@@ -72,12 +78,18 @@ public enum SubAgentType {
      * 工具白名单：null 表示放开全部工具，否则子 agent 只能拿到集合内的工具 code
      */
     private final Set<String> allowedCodes;
+    /**
+     * 是否携带项目层指令记忆（宿主仓库的 AGENTS.md）：只在子 agent 真的需要遵守宿主约定时为 true
+     */
+    private final boolean carryProjectMemory;
     private final String rolePrompt;
 
-    SubAgentType(String code, String description, Set<String> allowedCodes, String rolePrompt) {
+    SubAgentType(String code, String description, Set<String> allowedCodes,
+                 boolean carryProjectMemory, String rolePrompt) {
         this.code = code;
         this.description = description;
         this.allowedCodes = allowedCodes;
+        this.carryProjectMemory = carryProjectMemory;
         this.rolePrompt = rolePrompt;
     }
 
@@ -91,6 +103,14 @@ public enum SubAgentType {
 
     public Set<String> allowedCodes() {
         return allowedCodes;
+    }
+
+    /**
+     * 派生时是否装配项目层指令记忆。新增类型时请显式判断：要对照宿主约定改代码/审代码的才带，
+     * 纯定位检索的不带（默认全带等于把常驻成本乘以派生次数）。
+     */
+    public boolean carryProjectMemory() {
+        return carryProjectMemory;
     }
 
     public String rolePrompt() {

@@ -10,6 +10,7 @@ import com.szh.event.ContextCompactedEvent;
 import com.szh.event.MessageEvent;
 import com.szh.store.EventStore;
 import com.szh.utils.CommonUtils;
+import com.szh.utils.ConfigUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -44,11 +45,22 @@ public class AgentState {
      * <p>
      * 子 agent（{@code com.szh.agent.subagent.SubAgentExecutor}）用它注入「你是子 agent、独立上下文、
      * 只回最终结论」的角色指令，既保留项目 AGENTS.md 约定，又叠加子 agent 专属身份。appendix 为空时
-     * 行为与无参构造完全一致。
+     * 行为与无参构造完全一致。项目层是否加载由配置 {@code memory.instruction.project.enabled} 决定。
      */
     public AgentState(EventStore eventStore, String rolePromptAppendix) {
+        this(eventStore, rolePromptAppendix, ConfigUtil.getBoolean("memory.instruction.project.enabled", true));
+    }
+
+    /**
+     * 同时控制“带不带角色指令”与“带不带项目层指令记忆”。
+     * <p>
+     * {@code projectMemory=false} 时只装配内置基础 prompt（+ 全局层）再加角色指令——给纯检索型子 agent 用：
+     * 它只负责定位代码、不回写仓库，项目 internals 对它是每轮都要重付的无效常驻预算（派生 N 个就是 N 份）。
+     * 注意角色指令仍追加在最末，保证基础 prompt 构成的前缀稳定、不破坏模型侧 prompt cache。
+     */
+    public AgentState(EventStore eventStore, String rolePromptAppendix, boolean projectMemory) {
         this.eventStore = eventStore;
-        String base = InstructionMemoryLoader.loadSystemPrompt();
+        String base = InstructionMemoryLoader.loadSystemPrompt(projectMemory);
         this.systemPrompt = (rolePromptAppendix == null || rolePromptAppendix.isBlank())
                 ? base
                 : base + "\n\n" + rolePromptAppendix;

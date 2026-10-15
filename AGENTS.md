@@ -1,235 +1,60 @@
-# AGENTS.md
+---
+memory-bound: pom.xml,src/main/java/com/szh/agent/AgentState.java
+---
+# AGENTS.md（本项目 L0 常驻指令记忆）
 
-本文件是 openagent-harness 的**项目级指令记忆**，会在每次会话启动时由
-`InstructionMemoryLoader` 自动装配进 system prompt（全局 `~/.openagent/AGENTS.md` →
-仓库根 → 当前目录，逐级合并；支持 `@path` 引入其它文件）。
+openagent-harness：用 Java 从零实现的 Agent Harness（智能体运行框架），核心是 while 循环的
+Agent Loop：`model.call() → tool.execute() → 结果反馈给模型`，直到模型给出最终答案。
 
-## 项目概述
+## 本文件的规矩（改这里之前先看）
 
-openagent-harness 是一个用 Java 从零实现的 Agent Harness（智能体运行框架），
-参考 Claude Code / Codex 等主流工程设计。核心是一个 while 循环的 Agent Loop：
-`model.call() → tool.execute() → 结果反馈给模型`，直到模型给出最终答案。
+本文件会**每轮每次模型调用都装进 system prompt**，属于最贵的常驻预算；模块细节全部下钻到
+`docs/agents/*.md`（L1，**不常驻**，命中下方路由表时才用 `read_file` 取）。
+因此往本文件加内容前的唯一判据是：**这条能否对应一次可预期的错误避免**；属于"某个模块怎么回事/
+配置怎么用/冒烟测了什么"的一律写进 L1，不要塞进来。分层机制本身见 `docs/agents/instruction-memory.md`。
 
-## 技术栈与构建
+## 构建
 
-- JDK 21（`maven.compiler.source/target=21`），构建工具 Maven。
-- 本机默认 `JAVA_HOME` 可能是 JDK8，编译/运行前需切到 JDK21：
-  `/Users/demus/Library/Java/JavaVirtualMachines/ms-21.0.12.1-1/Contents/Home`。
-- 编译验证：`mvn -q compile`。
-- 关键依赖：Jackson（序列化）、Log4j2（日志）、MyBatis-Plus + HikariCP + MySQL（事件落库）、Lombok。
+- JDK 21（`maven.compiler.source/target=21`），Maven 构建；本机默认 `JAVA_HOME` 可能是 JDK8，
+  编译/运行前必须切：`export JAVA_HOME=/Users/demus/Library/Java/JavaVirtualMachines/ms-21.0.12.1-1/Contents/Home`
+- 编译验证：`mvn -q compile`（改完必跑）；打包 `mvn -q clean package` → `target/openagent.jar`
+- 技术栈：Jackson、Log4j2、MyBatis-Plus + HikariCP + MySQL、Lombok；验证走 `com.szh.test.*SmokeTest`（main 直跑，**不写 JUnit**）
 
-## 架构约定（务必遵守）
+## 铁律（跨模块、违反即坏，只有这些常驻）
 
-- **事件日志是唯一真相源**：所有状态变更先 `applyEvent` 落库，运行期再增量维护
-  `modelContext`；断点恢复由 `AgentState.resume()` 从事件流重建，不要在别处旁路维护状态。
-- **两套运行时**：`AgentRuntime`/`AgentExecutor` 走 Chat Completions API（`Model`）；
-  `AgentResponseRuntime`/`AgentResponseExecutor` 走 Responses API（`ResponseModel`）。改动需兼顾两者。
-- **DeepSeek Responses API 分组约束**：同一轮内所有 `function_call` 必须连续排列、
-  `function_call_output` 统一跟在其后，交错会触发 400。
-- **上下文压缩**：单一阈值 `compaction.threshold`，超阈值先 L0 规则压缩、仍超再升级 L1 LLM 摘要。
-  **压缩检查点持久化**：L1 摘要既花 LLM 调用又非确定性，故压缩发生时落一条 `ContextCompactedEvent`（`EventEnum.CONTEXT_COMPACTED`，
-  **不继承 `MessageEvent`**、不进增量 `modelContext`，但被 `AgentState.deriveMessages()` **特判消费**）把摘要正文与保留尾部条数固化进事件流；
-  `resume()` 遇到该事件即把此前累积历史折叠为 `[system, 摘要, 尾部 keepRecentCount 条]`，直接重建到运行期压缩态、**无需再调 LLM 重压**（多次压缩按事件顺序增量叠加）。
-  L0（`StepCompactor`）是确定性零成本规则压缩，**不落检查点**——恢复后重跑即得相同结果。`maybeCompact` 返回 `CompactionResult`
-  （`unchanged`/`l0Only`/`summarized`）携带 `isChanged`/`isSummarized` 与摘要，供两条运行时决定是否 `replaceModelContext` + 落检查点。
-- **工具结果外存**：超阈值的工具输出落盘到 `{workspace}/.agent-data/tool-results/{sessionId}/{callId}.txt`，
-  上下文只保留引用存根，模型用 `read_tool_result` 分页读取；`read_tool_result` 自身输出必须豁免落盘（否则无限套娃）。
+1. **事件日志是唯一真相源**：状态变更先 `applyEvent` 落库，运行期增量维护 `modelContext`，
+   断点恢复由 `AgentState.resume()` 从事件流重建——不要在别处旁路维护状态。
+2. **两套运行时都要改**：`AgentRuntime`/`AgentExecutor`（Chat Completions）与
+   `AgentResponseRuntime`/`AgentResponseExecutor`（Responses API）；任何 run 级闸门漏接一处就是行为不一致。
+3. **DeepSeek Responses API 分组约束**：同一轮内所有 `function_call` 必须连续排列、
+   `function_call_output` 统一跟在其后，交错直接 400。
+4. **surface 事件刻意不继承 `MessageEvent`**（不进 `modelContext`）；新增 `EventEnum` 必须同时补齐
+   `EventJsonCodec.deserialize` 与 `TraceReplay` 的 describe/HTML 三处穷尽 switch（编译器会报错，别加 default 绕）。
+5. **路径判断一律按规范化真实路径**：macOS `/tmp`→`/private/tmp`、`/var/folders`→`/private/var/folders`
+   是符号链接，`PathGuard.canonical()`/`SandboxPolicy.real()` 必须 `toRealPath()`，否则误判越界；
+   读边界默认用 `workspaceRoot`，**不能拿 `writableRoots` 当读校验边界**。
+6. **诊断能力不许拖垮 run**：落库/落盘/快照/记忆类旁路逻辑一律 try-catch 静默降级，绝不抛异常。
+7. **软引导写在工具 description 里**（`【适用前提】` 前缀），不做 run 起始动态选型、不引入惰性加载。
+8. **别破坏 system prompt 前缀稳定性**：运行期软装饰只能往尾部 append；`InstructionMemoryLoader`
+   装配出的分层记忆段是 DeepSeek prompt cache 的前缀，改写前部或频繁改动本文件都会让 cache 失效。
 
-## 安全与可靠性（P0）
+## L1 按需检索（命中就先 `read_file`，别凭记忆猜）
 
-- **shell 安全双层**（`com.szh.tool.security`，总开关 `shell.security.enabled`）：所有 `ShellCommandTool`
-  执行前先过 `PermissionController` 策略闸门，再由 `SandboxExecutor` 包装进 OS 级沙箱。
-  - **权限层**（对标 Claude Code allow/ask/deny）：`CommandClassifier` 按「可执行文件+关键参数」把命令分为
-    只读/写入/联网/危险；`PathGuard` 做路径穿越防护（`..` 归一化 + 真实路径包含校验）；决策三态 ALLOW/DENY/NEED_CONFIRM，
-    确认走 `PermissionPrompter`（交互式读 stdin，非交互按 `shell.permission.autoApprove` 兜底，默认拒绝）。
-  - **沙箱层**（对标 Codex，不用 Docker）：macOS 用系统自带 `sandbox-exec`/Seatbelt（`SeatbeltSandbox`），
-    三档 `shell.sandbox.mode` = read-only / workspace-write / full-access；workspace-write 只放开
-    `shell.sandbox.writable.extra`（含工作区、`~/.m2` 等构建缓存、临时目录）的写权限，默认禁网，
-    仅 `shell.sandbox.network.tools`（git/mvn）豁免联网。其它平台降级为 `DirectSandbox`（靠权限层兜底）。
-  - **关键坑**：macOS `/tmp`→`/private/tmp`、`/var/folders`→`/private/var/folders` 是符号链接，而 Seatbelt `subpath`
-    与路径包含判断都按**规范化真实路径**匹配，故 `SandboxPolicy.real()`/`PathGuard.canonical()` 必须 `toRealPath()`
-    解析符号链接，否则这些目录会被误判越界（表现为 mvn 写 jansi 锁文件 Operation not permitted）。
-- **模型调用重试**（`com.szh.utils.RetryExecutor` + `RetryPolicy`）：两个 DeepSeek 模型都接入指数退避重试。
-  非 200 抛 `ModelApiException` 携带状态码与 `Retry-After`；仅 429/408/5xx 与网络 IO 异常可重试，其余 4xx 立即失败。
-  请求带 `model.request.timeoutSeconds` 超时。新增 Provider 务必复用 `RetryExecutor` 而非各写一套。
-- **循环熔断**（`com.szh.agent.LoopGuard`，run 级实例）：检测「连续失败」（工具抛异常或返回错误结果达
-  `agent.guard.maxConsecutiveFailures`）与「重复调用」（同工具+同参数连续达 `agent.guard.maxRepeatCalls`），
-  触发即结束 run 并回传原因。两条运行时都接入：`AgentRuntime` 内联、`AgentResponseRuntime` 经 `HandleContext`
-  传给 `FunctionCallHandler`。工具执行必须 try-catch 兜底，异常转错误结果计入熔断，不再让整个 run 崩溃。
-
-## 验证闭环（VerifyGate）
-
-- **定位**（`com.szh.agent.verify`，总开关 `agent.verify.enabled`，默认关闭）：对标 Aider `--auto-test`、Claude Code `Stop` hook、SWE-agent finish gate，
-  给本地编码助手补上「能不能自己确认改对了」的核心能力——拦截「模型宣布完成」这一刻，跑项目声明的验证命令（编译/测试/lint），
-  不通过就把失败输出结构化塞回上下文强制继续修，通过才真正收尾。把「靠 prompt 求模型记得跑测试」升级为**框架级硬闸门**。
-- **触发条件**：两条运行时（`AgentRuntime` FINAL_ANSWER 分支 / `AgentResponseRuntime` `!anyToolCall` 分支）各在 run 开始建一个 run 级 `VerifyGate` 实例，
-  每次执行工具调用后 `markDirty(toolCode)`——命中写入类工具（`write_file`/`edit_file`/`delete_file`/`git_add`/`git_commit`/`git_push`）即置脏。
-  收尾分支调 `shouldVerify()`：闸门**武装**（`enabled` 且 `commands` 非空）且（未开 `onlyWhenDirty` 或本 run 确实改过代码）才验证，纯问答/只读任务自动跳过、不做无谓编译。
-- **配置来源与优先级**：`VerifyConfigLoader.load(workspace)` 分层装配——①基线从 `application.properties` 读调优旋钮
-  （`agent.verify.enabled/maxFixRounds/timeoutSeconds/onlyWhenDirty`）；②项目级 `{workspace}/.openagent/verify.json` **优先于**全局
-  `agent.verify.config.file`（默认 `~/.openagent/verify.json`）覆盖之，**验证命令清单只能由 json 提供**。文件缺失或解析失败一律静默降级为「未启用」，绝不拖垮 run；命令串复用 `CommonUtils.expand` 做 `~`/`${VAR}` 展开（与 `McpConfigLoader` 同一套语义）。
-  ```json
-  {"enabled":true,"maxFixRounds":3,"timeoutSeconds":600,"onlyWhenDirty":true,
-   "commands":["mvn -q -DskipTests compile","mvn -q test"]}
-  ```
-- **硬闸门语义**：命令按顺序执行、**fail-fast**（首个失败即停）。未通过且 `canRetry()`（`verifyRounds < maxFixRounds`）时，`incrementRound()` 后把
-  `VerifyResult.feedback(round, max)`（含失败命令/退出码/尾部输出 + 「验证通过前不要再次宣布完成」约束）作为一条 `UserMessageEvent` 回灌上下文并 `continue`，
-  模型下一轮看到失败继续修；超上限则返回「验证未通过（已尝试 N 次修复）」说明后 `break`（而非静默成功，让用户明确知道未通过）；通过则原样放行收尾。
-  失败输出按 `tool.result.max.chars` 做**尾部**截断（编译/测试报错通常在末尾）。
-- **防死循环三重保障**：`maxFixRounds`（验证-修复轮次上限）+ `agent.maxRound`（run 总轮次）+ `LoopGuard`（连续失败/重复调用熔断）互为兜底。
-- **复用而非各写一套**：验证命令执行链路完全复用既有安全设施——先过 `ShellSecurity.authorize`（权限闸门，被拒即记为该条失败并回灌原因），
-  再 `ShellSecurity.wrap`（OS 级沙箱），最后交 `ShellRunner`（从 `ShellCommandTool.execute()` 抽取的「ProcessBuilder + redirectErrorStream + 独立读线程 + waitFor 超时 + destroyForcibly」静态入口，`ShellCommandTool` 与 `Verifier` 共用，避免两套子进程逻辑）；命令串按空白拆成 argv，不经 shell 解释器，无注入风险（不支持管道/重定向）。
-- **软提示**：`VerifyPolicy.decorateContext` 仿 `PlanModePolicy` 只改上下文副本不动真相源，仅当闸门武装时往 system prompt 追加「完成前主动跑验证」契约，提升一次通过率。
-- **可观测**：新增 surface 事件 `VerificationEvent`（`EventEnum.VERIFICATION`，**不继承 `MessageEvent`**、不进 `modelContext`，对齐 `TodoUpdatedEvent`/`ModeSwitchedEvent`），
-  记录每次验证的命令/退出码/通过与否，落事件日志供 `TraceReplay` 回放（文本时间线 `[VERIFY ✓/✗]`、HTML 按 `VERIFY` 类着色）。
-- **REPL**：`/verify` 即时对当前 workspace 跑一遍验证并打印结果（复用 `Verifier`，不依赖模型）；`printModel()`/banner 增补 `verify=on(N 命令)/off` 让用户一眼看到闸门是否武装。
-- **冒烟**：`com.szh.test.VerifySmokeTest`（main 直跑，关闭 `shell.security.enabled` 用 `true`/`false` 零副作用命令，不依赖真实模型/构建）42 项断言全过：
-  武装判定/fail-fast/失败回灌文本/onlyWhenDirty 脏标记/maxFixRounds 计数边界/verify.json 分层加载与 `~`/`${VAR}` 展开/缺文件降级。
-
-## P1 核心体验（智能增强）
-
-- **多模型 + 流式**（`com.szh.model`）：`OpenAiCompatModel`（Chat Completions）/`OpenAiCompatResponseModel`（Responses）
-  是 OpenAI 兼容协议基类，DeepSeek 两模型只是其子类（固定 baseUrl/默认模型名）；`ModelFactory` 按 `model.provider`
-  （deepseek/openai/ollama/vllm/lmstudio）与 `model.response.provider` 装配两条链路，apiKey 未配置时回退环境变量。
-  SSE 流式走 `Model.call(messages, tools, StreamListener)` 重载，增量 token 由 `ConsoleStreamListener` 实时打到 stdout
-  （`model.stream.enabled`/`model.stream.printReasoning`）；**流式路径不重试**（增量已回放无法收回），阻塞路径仍走 RetryExecutor。
-- **文件工具**（`com.szh.tool.tools.file`，开关 `file.tools.enabled`）：`read_file`（带行号+offset/limit 分页）、
-  `write_file`（全量创建/覆盖）、`edit_file`（精确字符串替换，old_text 必须唯一否则拒绝，支持 replace_all，结果回显 LCS 统一 diff）、
-  `repo_map`（目录树+Java 符号抽取，自动剪枝 .git/target/node_modules 等噪音目录）、
-  `delete_file`（删单个文件，破坏性操作，单独开关 `file.delete.enabled`）。
-  路径安全由 `FileToolSupport` 统一把关：复用 `PathGuard.resolve`（含符号链接规范化），读写默认仅限工作区内，
-  `file.tools.allowOutside=true` 才放开到策略允许根；**读校验不能用 writableRoots 当边界**（含 /tmp 等，临时目录工作区会被穿越）。
-  `delete_file` 在工具层加三道硬限制：①路径必须在 repo root 之内（以 `SandboxPolicy.workspaceRoot` 为边界，**不受** `file.tools.allowOutside` 放开）；
-  ②禁止目录删除（只删单文件）；③敏感删除人工确认——命中大文件（`file.delete.confirm.minBytes`）或特定后缀/文件名（`file.delete.confirm.suffixes`，默认 `.java,pom.xml`）时复用 `ConsoleQuestionPrompter` 走 `ask_user_question` 同款交互征求确认，
-  临时/测试文件命中豁免正则（`file.delete.confirm.exempt.regex`）自动放行；非交互（EOF）按 `file.delete.confirm.autoApprove` 兜底（默认拒绝）。删除前 `captureSnapshot` 拍 before-image，`/rewind` 可还原误删。
-- **并行工具调用**（`com.szh.agent.ParallelToolExecutor`，两条运行时共用）：一轮内多个调用并发执行
-  （`agent.parallel.maxThreads`，单轮总超时 `agent.parallel.timeoutSeconds`），事件严格按「全部 CallToolStarted →
-  并发执行 → 全部 CallToolFinished（按调用原序）」落库，满足 Responses API 分组约束；`AssistantMessageItem.toolCalls`
-  承载一轮多调用（标量字段保留为首调用快照兼容旧路径）。配套线程安全：`AgentState.applyEvent`/`LoopGuard.record`/
-  `ConsolePermissionPrompter.confirm` 均已 synchronized。
-- **冒烟验证**：`com.szh.test.P1SmokeTest`（main 直跑，不依赖模型 API）覆盖文件工具链/路径安全/repo_map/并行事件有序/工厂装配。
-- **工具能力探测按需注册**（`com.szh.tool.BinaryProbe`，开关 `tool.probe.binaries.enabled`）：`Tool` 新增 `requiredBinaries()` 声明依赖的外部命令（裸 `GitTool`/`MvnTool`、`AbstractGitWorkflowTool` 都声明 `git`，coreutils 不声明避免误判 shell 内建）；`ToolRegistry.rebuild()` 末尾统一一道过滤：白名单过滤后，再剔除本机 PATH 缺任一命令的工具（纯 `File` stat 扫描 PATH 不起子进程、结果进程内缓存，开关闭/PATH 不可得时一律视为可用不误滤），被剔除的记 info 日志。补上裸 git/mvn 无 config 开关的漏口，避免在无 git/mvn 的环境（如 terminal-bench 纯 Python 容器）把不可用命令暴露给模型诱发无谓试错。执行层另有 `ShellCommandTool.translateExecError` 互补：探测关闭或命令中途消失时，把 `Cannot run program ... error: 2` 转为「命令未安装、勿重试、改用环境已有手段」的友好回执。
-
-## P2 交互与可观测性
-
-- **交互式 REPL**（`com.szh.cli.Repl`，纯 JDK 无新增依赖）：把「一次性 run」升级为可持续对话的 CLI 会话。
-  跨轮复用同一 `AgentState` + 运行时实例（上下文由 `applyEvent` 增量维护，MEMORY 引擎下也能多轮连续）；
-  `/runtime chat|response` 双链路切换共享同一 session；`/new`、`/session [id]`、`/replay`、`/model`、`/clear` 等内置命令；
-  默认链路走 `repl.runtime`。开启 `model.stream.enabled` 时正文已由 `ConsoleStreamListener` 逐 token 打到 stdout，REPL 不再重复打印最终结果。
-  支持 `--prompt "..."` 非交互一次性执行；权限确认仍由 `ConsolePermissionPrompter` 直接读 stdin（REPL 一次只读一行、run 期间不并发读取，交互场景不串台）。
-- **Git 工作流**（`com.szh.tool.tools.git`，开关 `git.tools.enabled`）：把 add/commit/push/status 封装成参数结构化独立工具
-  （`git_add`/`git_commit`/`git_push`/`git_status`），修复「无法提交代码」——`git_commit` 强制 `-m` 且注入 `GIT_EDITOR=true` 杜绝裸 commit 弹编辑器阻塞，
-  基类统一 `GIT_TERMINAL_PROMPT=0` 避免 push 缺凭据挂死；仓库缺身份时可开 `git.commit.autoIdentity` 用 `-c user.name/email` 兜底（会覆盖既有身份，慎用）。
-  命令仍走 `ShellCommandTool` 权限闸门 + 沙箱；原始 `git` 透传工具保留供 diff/log/show 只读查询。子类经 `ShellCommandTool.environment()` 钩子注入环境变量。
-- **Trace 回放**（`com.szh.trace.replay.TraceReplay`）：把 `EventStore` 事件流重渲染成 run→turn→round 的可读时间线，解决「调试困难」。
-  `render()` 输出控制台文本时间线，`exportHtml()` 导出自包含 HTML（按事件类型着色、长内容折叠）到 `{trace.html.dir|workspace/.agent-data/traces}/{sessionId}.html`；
-  只读不改事件真相源，REPL `/replay [id] [--html]` 与 `TraceReplay <sessionId> [--html]` main 均可触发。注意 token 用量未随事件落库，回放呈现流程与耗时不含逐轮 token。
-
-## P3 子 agent / Task 派生（上下文物理隔离）
-
-- **定位**（`com.szh.agent.subagent`，总开关 `subagent.enabled`）：对标 Claude Code 的 Task 工具，把「会产生大量中间产物、但主对话只需要一个结论」的子任务外包给独立上下文的子 agent，主 agent 只拿最终结论——这是长任务不炸上下文的核心手段，与既有的上下文压缩（L0→L1）、工具结果落盘互补（压缩有损、隔离无损）。
-- **触发**：主 agent 调 `dispatch_subagent(type, prompt)` 工具（`com.szh.tool.tools.subagent.DispatchSubAgentTool`，注册进 `ToolRegistry`）。`prompt` 必填且**必须自包含**——子 agent 看不到主对话历史。`type` 见 `SubAgentType`：`general-purpose`（全部工具）/ `code-review`（只读工具子集，不改仓库）/ `explore`（只读检索），每种类型绑定一份「角色指令 + 工具白名单」；未知/不传回退 general-purpose。
-- **执行**（`SubAgentExecutor.dispatch`）：为每次派生建**全新独立运行时环境**——独立 `EventStore` + 独立 `AgentState`（角色指令经 `AgentState(EventStore, rolePromptAppendix)` 追加在分层 system prompt 之后）+ 独立派生 `sessionId`（`{parent}-sub-{8位短id}`）+ 按类型白名单构造的 `ToolRegistry`；复用现有两条运行时（`subagent.runtime`=chat/response，Responses 不可用自动回退 chat），子 agent 用更小的 `subagent.maxRound` 收紧轮次。
-- **关键约束（务必遵守）**：
-  - **子 agent 事件绝不混入父事件流**——父 `AgentState.resume()` 从事件流重建 modelContext，若子事件混进去，断点恢复会把子 agent 全部中间产物灌回主上下文，直接违背「只拿最终结论」。子 agent 用自己的 sessionId 独立落库，父只通过工具结果拿结论；`TraceReplay` 天然按 session 分别回放父子时间线。
-  - **递归深度靠结构杜绝**：子 registry 以 `childDepth=parentDepth+1` 构造，`ToolRegistry.subAgentTools()` 在 `subAgentDepth >= subagent.maxDepth`（默认 1）时**不注册** `dispatch_subagent`，子 agent 默认拿不到派生工具，无法再生孙 agent；`SubAgentExecutor` 另有 `childDepth > maxDepth` 兜底拒绝。
-  - **工具白名单是唯一真实缺口**：`ToolRegistry` 新增 `ToolRegistry(Set<String> allowedCodes, int subAgentDepth)` 构造，rebuild 末尾按 `allowedCodes` 过滤（null=全量）。
-- **已知取舍**：子 agent 继承全局 `model.stream.enabled` 与权限确认策略；并行派生多个含 shell 的子 agent 时，`ConsolePermissionPrompter` 读 stdin 可能串台，建议模型顺序派生或依赖 `shell.permission.autoApprove` 兜底。结论超长仍走既有落盘（`inlineResult` 默认 false）。
-- **冒烟**：`com.szh.test.SubAgentSmokeTest`（main 直跑，注入 Fake 模型不依赖真实 API）覆盖类型解析/白名单过滤/深度闸门/事件隔离/端到端派生返回结论。
-
-## MCP Client（外部工具生态）
-
-- **定位**（`com.szh.mcp`，总开关 `mcp.enabled`）：实现 [Model Context Protocol](https://modelcontextprotocol.io/) 客户端，
-  把外部 MCP Server（filesystem / github / postgres / slack / playwright 等）的 tools 动态注册进 `ToolRegistry`，
-  让 openagent 一次接入即吃到整个 MCP 生态。第一版仅覆盖 stdio transport（对齐 Claude Desktop / Cursor 主流做法）；
-  HTTP+SSE / Streamable HTTP 预留了 `McpTransport` 抽象接口，后续可按需扩展。
-- **协议栈**（三层解耦）：`protocol/JsonRpc` 只做 JSON-RPC 2.0 消息构造与判别；`transport/StdioTransport`
-  负责子进程 stdin/stdout NDJSON 收发（stdout 独立读线程按 id 路由 pending，stderr 独立线程落日志——两者都必须异步读干净，
-  否则子进程缓冲区打满会直接卡死）；`client/McpClient` 处理 initialize 握手（协议版本 2025-06-18，老 Server 回退 2024-11-05）、
-  tools/list 分页、tools/call 与 content[] 展平。反向 request（sampling/roots）当前不实现，由 StdioTransport 自动回 method_not_found，避免 Server 卡等。
-- **配置**（`~/.openagent/mcp.json`，格式对齐 Claude Desktop，可被 `mcp.config.file` 覆盖）：
-  ```json
-  {"mcpServers": {"filesystem": {"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/path"],
-    "env":{"TOKEN":"${MY_TOKEN}"},"disabled":false,"sandbox":false,"connectTimeoutSeconds":20,"rpcTimeoutSeconds":60}}}
-  ```
-  `McpConfigLoader` 支持 `~` 展开与 `${VAR}` 环境变量替换（共享配置不必硬编码 secret）；单个 Server 解析失败不影响其它 Server。
-- **生命周期**（`McpClientManager` 单例）：懒启动 `ensureInit()`（首次调才拉 Server）→ 并发启动 `STARTUP_PARALLELISM=4`
-  → 单 Server 失败仅记入 `failures` 不拖垮整体 → JVM shutdown hook 保证退出时子进程不残留。REPL `/mcp reload`
-  触发 `manager.reload() + toolRegistry.rebuild()`，用户改完 `mcp.json` 不需要重启会话。
-- **安全**：Server 启动命令走 `ShellSecurity.authorize` 权限闸门（防配置被塞危险命令），但**默认不走沙箱包装**
-  ——MCP Server 常需写 `~/.npm`、`~/.cache` 等目录，沙箱档位没配好反而启动失败；用户显式在配置里 `sandbox:true` 才 `ShellSecurity.wrap`。
-- **命名空间**：MCP 工具 code = `{serverName}__{toolName}`（双下划线，对齐 Claude Code / Cursor），description 前缀 `[MCP:{server}]`
-  让模型显式感知工具来源；OpenAI/DeepSeek 的 function.name 允许 `[a-zA-Z0-9_-]`，双下划线合法且与内置工具天然不冲突。
-- **可观测**：REPL `/mcp` 显示已连接/失败/禁用概览，`/mcp tools` 按 Server 分组列全部工具 code + 描述；
-  Server 通过 stderr 输出的日志会以 `mcp[{server}:stderr] ...` 前缀落到 log4j2，`notifications/message` 也会转成日志。
-- **冒烟**：`com.szh.test.McpSmokeTest` 内嵌 Python echo Server，覆盖握手/tools 列表/tools 调用/isError/非法参数/Manager reload/工具包装 21 项断言，无需外部依赖。
-
-## 元工具（agent 自组织）
-
-- **定位**（`com.szh.tool.tools.meta`，总开关 `meta.tools.enabled`）：对标 Claude Code 的 TodoWrite / AskUserQuestion / SwitchMode / ExitPlanMode，
-  给 agent「自组织」能力——自己维护多步任务清单、结构化问询用户、在 NORMAL/PLAN 模式间切换，而不是只能一路 tool_call 到底。
-  四件套：`todo_write` / `ask_user_question` / `switch_mode` / `exit_plan_mode`，均继承 `MetaToolSupport`（统一入参解析 + `emit` 落事件 + `inlineResult=true` 回执内联不落盘）。
-- **自主规划（对标主流「按复杂度自动决定是否先规划」）**：不用独立分类器，而是把判断交给模型——`InstructionMemoryLoader.BASE_SYSTEM_PROMPT` 内置一段「规划决策契约」：
-  简单/单点/低风险任务直接做，复杂/多步/跨多文件/歧义/破坏性或大范围重构任务先 `switch_mode(plan)` 探索出方案（可配 `todo_write` 拆解），方案完备后 `exit_plan_mode` 提交审批。契约是软约束，AGENTS.md 可细化覆盖。
-- **状态双写（关键约定）**：元工具改变的是 agent 的自组织状态而非外部世界。运行期待办/模式态各用一个 **session 键的进程内单例**
-  （`TodoStore` / `AgentModeStore`，对齐 `LongTermMemory.get()` / `McpClientManager.get()` 范式）供 REPL 低延迟渲染与跨轮复用；
-  同时把变更落成 **surface 事件**（`TodoUpdatedEvent` / `ModeSwitchedEvent`）进事件日志（唯一真相源），供 `/session` 恢复回灌与 TraceReplay 回放。
-- **surface 事件不进模型上下文**：两个新事件刻意**不继承 `MessageEvent`**——清单/模式内容已通过工具结果回执给了模型，再塞进 `modelContext`
-  既冗余又会破坏 DeepSeek Responses API 的 function_call 分组约束。故 `AgentState.resume()`/`deriveMessages()` 天然忽略它们，只由 REPL/回放消费。
-- **工具如何拿到落库入口**：工具只拿得到 `ToolContext`，故约定运行时在 `ParallelToolExecutor.runSingle` 构造 `ToolContext` 时注入
-  `AgentState` + `turnId` + `round`（新增字段），元工具经 `MetaToolSupport.emit(ctx, event)` 落库；脱离运行时的单测直调时 `AgentState` 为 null，`emit` 静默跳过、内存 store 仍更新，保证工具可独立测试。
-- **PLAN 模式（`switch_mode`）**：会话级模式，两条运行时（`AgentRuntime`/`AgentResponseRuntime`）**每轮开头**读 `AgentModeStore`，
-  经 `PlanModePolicy` 施加软硬双约束——①`effectiveTools` 用**拒绝名单**（write_file/edit_file/delete_file/git_add/git_commit/git_push/mvn/remember/forget/dispatch_subagent）
-  剔除写入类工具，只留只读检索 + 元工具；②`decorateContext` 往上下文副本的 system prompt 追加规划契约（只改副本不动真相源）。切换**下一轮生效**，无需重启会话。
-  用拒绝名单而非白名单：默认放行、仅剔已知写入工具，新增只读工具无需改这里，底层仍有权限闸门 + 沙箱兜底。用户也可在 REPL 用 `/mode plan|normal` 切换（写同一份 store + 落同一事件）。
-- **exit_plan_mode（规划退出审批闸门，对标 Claude Code ExitPlanMode）**：PLAN 下模型方案完备后调它，把方案正文连同「是否开始执行」抛给用户审批（复用 `ConsoleQuestionPrompter`，两个互斥选项）。
-  **仅当用户明确选「批准并开始执行」**才 `AgentModeStore.set(NORMAL)` 并落 `ModeSwitchedEvent`（自动切回，无需用户手动 `/mode normal`）；选「继续修改」或自定义反馈一律留在 PLAN、把反馈回灌模型完善。非交互（EOF，`--prompt`/单测）安全兜底：不擅自切 NORMAL，提示模型把方案作为最终答复输出供审阅。它是元工具、非写入类，故**不在** `PlanModePolicy.MUTATING_CODES`，PLAN 下天然保留（否则无法提交审批退出）。
-- **ask_user_question**：结构化多选/单选问询，交互复用 `ConsoleQuestionPrompter` 读 stdin（沿用 `ConsolePermissionPrompter` 约定：提示走 stderr、
-  `synchronized` 防并行串台、run 期间 REPL 不并发读）；非交互（EOF，如 `--prompt`/单测）返回 `null`，工具据此回「无人可答」提示引导模型自行决策而非死等。不落事件（即时交互，答案经工具结果回传即可）。
-- **REPL 渲染**：`/todo` 查看当前清单，每轮对话结束后自动渲染待办（若有）；`/mode [plan|normal]` 查看/切换模式，banner 显示当前模式；
-  `/session <id>` 恢复时 `restoreMetaState()` 扫事件流回灌 `TodoStore`/`AgentModeStore`。TraceReplay 文本时间线与 HTML 均新增 TODO/MODE 事件渲染（各自着色）。
-- **冒烟**：`com.szh.test.MetaSmokeTest`（main 直跑，注入 Fake 问询器 + 进程内事件存储，不依赖真实 API/stdin）43 项断言全过：
-  todo 替换/merge/状态归一化/渲染/事件落库、事件编解码往返、问询解析/结构化回执/非交互兜底、模式切换/PLAN 工具过滤、exit_plan_mode 批准切回 NORMAL 落事件/拒绝留 PLAN/非交互兜底、registry 装配。
-
-## 本地 Trace 查看器（Web Viewer）
-
-- **定位**（`com.szh.web`，零新增依赖）：把「这次执行到底发生了什么」做成一个本地网页——左栏会话列表 → 会话内按
-  **turn → run → round** 下钻，每轮可看**送给大模型的完整上下文**、**本轮 token 用量/耗时**、每次工具调用的入参与结果，
-  以及 VERIFY/COMPACT/TODO/MODE 标记。用 JDK 内置 `com.sun.net.httpserver.HttpServer` + 原生 JS 单页（无 CDN、无构建），
-  **纯只读**：只读事件流与快照，从不写入、不参与 agent 运行、不需要 API Key，只绑 `127.0.0.1`、无鉴权。
-- **启动**：`bin/openagent-web [--port 8787] [--workspace /path]`（或 `java -cp openagent.jar com.szh.web.TraceWebServer`），
-  端口配置 `web.server.host/web.server.port`。**不改 `Repl`**，与主流程完全解耦。
-- **每轮 token 落库**（`TokenUsageEvent`，`EventEnum.TOKEN_USAGE`）：两条运行时在 `model.call` 后紧跟一条 **surface 事件**
-  （**不继承 `MessageEvent`**、不进 `modelContext`、被 `resume()` 天然忽略，故不破坏 DeepSeek Responses API 的 function_call 分组约束），
-  字段含 prompt/completion/total/cached、上下文条数与估算 token、模型耗时（`elapsedMs`）。`usage=null`（FakeModel/未回 usage 的 provider）兜底为 0。
-  ⚠️ `EventJsonCodec.deserialize` 与 `TraceReplay` 的 describe/HTML 都是对 `EventEnum` 的**穷尽 switch**，加枚举值必须同时补齐这三处，否则编译直接报错（这是刻意保留的强制对齐）。
-- **上下文快照侧车**（`com.szh.trace.context`）：system prompt 与运行期软装饰（记忆召回/PLAN 契约/验证提示/护栏纠偏）都不落事件，
-  事后仅靠事件流只能重建近似值。故两条运行时在 `model.call` **前**把真正的 `callContext` + 本轮可见工具列表另存一份：
-  `{trace.context.dir}/{sessionId}/{runId}.jsonl`（默认 `~/.openagent/context`，**全局而非工作区**，与 `store.file.dir` 同哲学），一行一轮。
-  开关 `trace.context.enabled`（默认 true），单条超 `trace.context.max.bytes`（默认 2MB）只告警跳过，**永不抛异常**（与 `ToolResultStore` 同款防御，诊断能力不许拖垮 run）；
-  目录可随意删，删了自动回退重建。快照**刻意不直接序列化 `MessageItem`**（接口无类型信息，Jackson 会丢字段），转成中性 DTO
-  `SnapshotMessage/SnapshotToolCall` 落盘，等于写侧/读侧的稳定契约。子 agent 用自己的 sessionId 落自己的目录，天然隔离。
-- **读侧两档**（UI 用徽标明确区分，不误导）：`ContextSnapshotReader` 取精确快照（「当时真相」）；缺失时 `ContextReplayer`
-  按与 `AgentState.deriveMessages()/collapseCompacted()` **完全一致的口径**从事件流重建（只累积 `MessageEvent` + 遇 `ContextCompactedEvent`
-  折叠为 `[system, 摘要, 尾部 keepRecentCount]`，system prompt 按当前工作区重新装配）。改 `AgentState` 的口径时必须同步改这里（类注释已标注）。
-- **API（全 GET、`Cache-Control: no-store`、异常统一 JSON）**：`/api/meta`、`/api/sessions`、`/api/sessions/{id}`（**默认不带上下文正文**）、
-  `/api/sessions/{id}/context?runId=&round=`（懒加载）、`/api/sessions/{id}/events?offset=&limit=`（原始事件，调试）、`/api/tool-result?session=&callId=`。
-  所有来自 URL 的 id 参与路径拼接前一律过 `SessionCatalog.sanitize`（`[^a-zA-Z0-9_-]`→`_`，与 `FileEventStore` 同款）。
-- **数据入口**：`SessionCatalog` 是查看器唯一数据入口——FILE 扫 `{store.file.dir}/*.jsonl`（依赖新增的 `FileEventStore.getSessionDir()`），
-  MYSQL 用一条 `group by session_id` 聚合（不新增 mapper 方法），MEMORY 返回空并提示「进程内非持久」；按「文件大小+mtime」缓存解析结果，
-  因为前端默认 3s 轮询而单个会话可达数百 KB。超长工具输出只给「查看完整结果」按钮按需拉 `/api/tool-result`（正文在**工作区**内，跨工作区会话需切目录启动）。
-- **历史会话兼容**：老 JSONL 无 `TOKEN_USAGE` 类型不受影响，token 面板显示「未记录」，上下文自动走重建路径。
-- **冒烟**：`com.szh.test.WebViewerSmokeTest`（main 直跑，全部落盘指到临时目录，不依赖真实模型/MySQL/stdin）81 项断言全过：
-  会话清单与子会话打标/turn→run→round 分组/并行工具配对/token 汇总与「未记录 vs 0」区分/快照写读与超限·关开关兜底/压缩前后上下文重建折叠/HTTP 各接口/路径穿越被拒/`usage=null` 不 NPE。
-
-## 存储引擎
-
-由 `store.engine` 切换：`MEMORY`（进程内、非持久）、`MYSQL`（落库）、
-`FILE`（Codex 风格 JSONL rollout，落 `~/.openagent/sessions/{sessionId}.jsonl`）。
+| 你要动什么 / 在排查什么 | 先读 |
+| --- | --- |
+| 事件、EventStore、AgentState、resume、上下文压缩、工具结果外存 | `docs/agents/event-and-context.md` |
+| shell 权限闸门、Seatbelt 沙箱、模型重试、LoopGuard 熔断 | `docs/agents/security-and-reliability.md` |
+| VerifyGate（`agent.verify.*`、verify.json、失败回灌、`/verify`） | `docs/agents/verify-gate.md` |
+| 模型/provider/流式、文件工具、Git 工具、并行工具、BinaryProbe | `docs/agents/tools-and-models.md` |
+| 元工具（todo/mode/ask_user_question、PLAN 模式与拒绝名单） | `docs/agents/meta-tools.md` |
+| 子 agent / `dispatch_subagent` / 事件隔离 / 深度闸门 | `docs/agents/subagent.md` |
+| MCP client（Server 起不来、stdio 卡死、工具命名空间） | `docs/agents/mcp.md` |
+| REPL、TraceReplay、TokenUsageEvent、上下文快照、Web Viewer | `docs/agents/observability.md` |
+| 指令记忆装配本身（L0/L1/L2、`memory.instruction.*`） | `docs/agents/instruction-memory.md` |
+| **写任何 Java 代码前**（同步清单：新增写入工具四处 / 新增事件三处） | `docs/agents/contributing.md` |
 
 ## 代码风格
 
-- 包根为 `com.szh`；新增工具放到 `com.szh.tool.tools` 下并注册进 `ToolRegistry`。
-- 新增依赖外部命令（如 `git`/`mvn`/`docker` 等非 coreutils）的工具时，覆写 `Tool.requiredBinaries()` 声明其依赖命令，
-  `ToolRegistry` 会按本机 PATH 自动按需注册、缺命令则不暴露给模型；纯内置能力/coreutils 无需声明。
-- 中文注释，解释“为什么”而非“是什么”；对外配置项走 `ConfigUtil` 统一读取。
+- 包根 `com.szh`；新增工具放 `com.szh.tool.tools` 下并注册进 `ToolRegistry`；
+  依赖外部命令的工具覆写 `Tool.requiredBinaries()`（coreutils 不声明）。
+- 中文注释，解释"为什么"而非"是什么"；对外配置项统一走 `ConfigUtil`（`-Dkey=value` 优先于配置文件）。

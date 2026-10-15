@@ -1,9 +1,57 @@
 /*
- * 本地 Trace 查看器样式：深色主题，配色直接沿用 TraceReplay 导出的 HTML 那套
- * （背景 #0f1115 / 面板 #171a21 / 边框 #262b36 / 各事件类着色），降低两端切换的认知成本。
+ * 本地 Trace 查看器样式：浅色 / 深色双主题，默认浅色。
+ *
+ * 主题切换靠 <html data-theme="light|dark">，全部颜色集中在下面两组变量里，
+ * 规则区只引用变量、不写死色值——这样加主题时只动变量块，不会漏改散落的硬编码。
+ * 深色一档沿用 TraceReplay 导出 HTML 的那套配色，保证两端切换的认知一致。
  * 纯手写、无框架、无 CDN——查看器的定位就是零依赖。
  */
-:root {
+
+/* ---------- 浅色主题（默认） ---------- */
+:root,
+[data-theme="light"] {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --panel-2: #eef1f5;
+    --line: #d5dae2;
+    --line-soft: #e6eaf0;
+    --text: #1f2430;
+    --muted: #5a6373;
+    --dim: #8a93a3;
+    /* 输入框/代码块等「凹陷」表面的底色 */
+    --input-bg: #ffffff;
+    /* 悬停高亮 */
+    --hover-bg: #eef1f5;
+    --hover-border: #b6bfcd;
+    --chip-bg: #eef1f5;
+    --summary-bg: #f0f3f7;
+    --turn-bg: #ffffff;
+    --round-bg: #fafbfd;
+    --badge-bg: #eef1f5;
+    /* 工具输出正文色 */
+    --out: #2b3440;
+    /* 关键字命中高亮 */
+    --hit-bg: #ffe8a3;
+    --scroll-thumb: #c3cbd6;
+    --badge-sub-line: #d3c4ff;
+    --badge-snap-line: #9fe0c3;
+    /* 事件类着色：浅色底上整体加深一档，否则白底看不清 */
+    --user: #1f6feb;
+    --think: #7c3aed;
+    --model: #0f9d63;
+    --tool-start: #b45309;
+    --tool-done: #2f9e44;
+    --done: #d6336c;
+    --todo: #a8770c;
+    --mode: #0b7285;
+    --verify: #d9480f;
+    --tokens: #0b7285;
+    --compact: #7048e8;
+    --system: #5c677d;
+}
+
+/* ---------- 深色主题 ---------- */
+[data-theme="dark"] {
     --bg: #0f1115;
     --panel: #171a21;
     --panel-2: #1b2029;
@@ -12,6 +60,19 @@
     --text: #e6e6e6;
     --muted: #8b93a7;
     --dim: #6b7488;
+    --input-bg: #12151b;
+    --hover-bg: #20262f;
+    --hover-border: #3a4252;
+    --chip-bg: #1a1f28;
+    --summary-bg: #171b23;
+    --turn-bg: #13161d;
+    --round-bg: #141821;
+    --badge-bg: #141821;
+    --out: #c8d0e0;
+    --hit-bg: #4a3a12;
+    --scroll-thumb: #2a3140;
+    --badge-sub-line: #3a3050;
+    --badge-snap-line: #234a3a;
     --user: #4ea1ff;
     --think: #b58cff;
     --model: #41d19a;
@@ -74,11 +135,11 @@ button {
     font-size: 12px;
     cursor: pointer;
 }
-button:hover { border-color: #3a4252; background: #20262f; }
+button:hover { border-color: var(--hover-border); background: var(--hover-bg); }
 button.mini { padding: 2px 8px; font-size: 11px; color: var(--muted); }
 
 input[type=search], input[type=number] {
-    background: #12151b;
+    background: var(--input-bg);
     border: 1px solid var(--line);
     color: var(--text);
     border-radius: 6px;
@@ -110,7 +171,7 @@ input[type=number] { width: 74px; }
     border-bottom: 1px solid var(--line-soft);
     cursor: pointer;
 }
-.item:hover { background: #151922; }
+.item:hover { background: var(--hover-bg); }
 .item.active { background: var(--panel-2); border-left: 3px solid var(--model); padding-left: 9px; }
 .item-title { color: var(--text); font-size: 12px; margin-bottom: 3px; word-break: break-all; }
 .item-sub { color: var(--dim); font-size: 11px; }
@@ -124,10 +185,10 @@ input[type=number] { width: 74px; }
     border-radius: 10px;
     font-size: 11px;
     color: var(--muted);
-    background: #141821;
+    background: var(--badge-bg);
 }
-.badge.sub { color: var(--think); border-color: #3a3050; }
-.badge.snap { color: var(--model); border-color: #234a3a; }
+.badge.sub { color: var(--think); border-color: var(--badge-sub-line); }
+.badge.snap { color: var(--model); border-color: var(--badge-snap-line); }
 .badge.none { color: var(--dim); }
 
 /* ---------- 会话概览 ---------- */
@@ -158,7 +219,7 @@ input[type=number] { width: 74px; }
     border-radius: 10px;
     margin: 10px 0 18px;
     overflow: hidden;
-    background: #13161d;
+    background: var(--turn-bg);
 }
 .turn-head {
     display: flex;
@@ -185,7 +246,7 @@ input[type=number] { width: 74px; }
     border: 1px solid var(--line-soft);
     border-radius: 8px;
     margin: 6px 0;
-    background: #141821;
+    background: var(--round-bg);
 }
 .round-head {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -195,7 +256,7 @@ input[type=number] { width: 74px; }
 .chip {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 1px 7px; border-radius: 10px; font-size: 11px;
-    background: #1a1f28; border: 1px solid var(--line-soft); color: var(--muted);
+    background: var(--chip-bg); border: 1px solid var(--line-soft); color: var(--muted);
     font-variant-numeric: tabular-nums;
 }
 .chip.token { color: var(--tokens); }
@@ -208,7 +269,7 @@ input[type=number] { width: 74px; }
 .sec { margin-top: 10px; border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden; }
 .sec > summary {
     cursor: pointer; padding: 6px 12px; color: var(--muted);
-    background: #171b23; font-size: 12px; list-style: none;
+    background: var(--summary-bg); font-size: 12px; list-style: none;
 }
 .sec > summary::-webkit-details-marker { display: none; }
 .sec > summary::before { content: "▸ "; color: var(--dim); }
@@ -237,7 +298,7 @@ input[type=number] { width: 74px; }
 .k-runCompleted .body { color: var(--done); }
 
 .text {
-    background: #12151b;
+    background: var(--input-bg);
     border: 1px solid var(--line-soft);
     border-radius: 6px;
     padding: 7px 10px;
@@ -247,8 +308,8 @@ input[type=number] { width: 74px; }
 }
 .text.clip { max-height: 220px; overflow-y: auto; }
 .args { color: var(--tool-start); font-size: 11px; word-break: break-all; }
-.out { color: #c8d0e0; }
-.hit { background: #4a3a12; border-radius: 3px; padding: 0 2px; }
+.out { color: var(--out); }
+.hit { background: var(--hit-bg); border-radius: 3px; padding: 0 2px; }
 
 .todo-item { padding: 2px 0; }
 .todo-PENDING { color: var(--muted); }
@@ -281,7 +342,7 @@ input[type=number] { width: 74px; }
 .raw-events { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; }
 .raw-events > details > summary { cursor: pointer; color: var(--muted); }
 .raw-tools { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
-.raw-box { background: #12151b; border: 1px solid var(--line-soft); border-radius: 6px; padding: 10px; max-height: 460px; overflow: auto; }
+.raw-box { background: var(--input-bg); border: 1px solid var(--line-soft); border-radius: 6px; padding: 10px; max-height: 460px; overflow: auto; }
 
 .toast {
     position: fixed; right: 18px; bottom: 18px; z-index: 50;
@@ -293,5 +354,5 @@ input[type=number] { width: 74px; }
 .toast.on { opacity: 1; }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 5px; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

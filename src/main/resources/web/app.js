@@ -49,14 +49,39 @@
         el.stepSearch.addEventListener('input', applyFilter);
         el.autoRefresh.addEventListener('change', scheduleRefresh);
         $('btnRaw').addEventListener('click', loadRaw);
+        $('btnTheme').addEventListener('click', toggleTheme);
         window.addEventListener('hashchange', onHashChange);
 
         // 后台标签页不轮询：本地工具也要避免无谓的磁盘扫描
         document.addEventListener('visibilitychange', scheduleRefresh);
 
+        syncThemeButton();
         loadAll(false);
         scheduleRefresh();
     });
+
+    /* ==================== 主题 ==================== */
+
+    /**
+     * 主题存在 <html data-theme> 上，首屏由 index.html 的内联脚本先定好（防闪烁），
+     * 这里只负责后续切换与按钮文案同步。localStorage 可能被浏览器禁用，故读写都要 try。
+     */
+    function toggleTheme() {
+        var next = currentTheme() === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('trace-theme', next); } catch (e) { /* 隐私模式等：仅本次会话生效 */ }
+        syncThemeButton();
+    }
+
+    function currentTheme() {
+        return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    }
+
+    /** 按钮文案显示「点了会切到哪」，而不是当前主题，减少一次反直觉点击 */
+    function syncThemeButton() {
+        var btn = $('btnTheme');
+        if (btn) { btn.textContent = currentTheme() === 'dark' ? '☀ 浅色' : '☾ 深色'; }
+    }
 
     function loadAll(force) {
         loadMeta();
@@ -396,7 +421,7 @@
                 body = '<div class="args mono">' + esc(s.code) + '</div>' + result(s.output, s.callId);
                 break;
             case 'verify':
-                body = '<div>' + (s.passed ? '<span style="color:#41d19a">通过</span> ' : '<span style="color:#ff6b81">未通过</span> ')
+                body = '<div>' + (s.passed ? '<span style="color:var(--model)">通过</span> ' : '<span style="color:var(--done)">未通过</span> ')
                     + '<span class="mono">' + esc(s.command || '') + '</span>'
                     + (s.exitCode == null ? '' : ' exit=' + s.exitCode) + '</div>' + text(s.detail);
                 break;
