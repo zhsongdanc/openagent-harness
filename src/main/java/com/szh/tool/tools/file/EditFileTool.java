@@ -87,27 +87,39 @@ public class EditFileTool extends FileToolSupport {
             }
             boolean replaceAll = booleanArg(args, "replace_all", false);
 
-            String content = Files.readString(file, StandardCharsets.UTF_8);
-            int occurrences = countOccurrences(content, oldText);
-            if (occurrences == 0) {
-                throw new IllegalArgumentException("old_text 在文件中未找到，请先 read_file 确认最新内容"
-                        + "（注意缩进、空白与换行必须逐字符一致）");
-            }
-            if (occurrences > 1 && !replaceAll) {
-                throw new IllegalArgumentException("old_text 在文件中出现 " + occurrences + " 次，无法唯一定位；"
-                        + "请补充上下文使其唯一，或传 replace_all=true 全部替换");
-            }
+            // 同路径写锁串行化「读 -> 定位校验 -> 写回」整段：一轮内并发编辑同一文件时，
+            // 后一个编辑必然在前一个落盘后才读，两处改动叠加保留而非互相覆盖
+            return withPathLock(file, () -> {
+                String content = Files.readString(file, StandardCharsets.UTF_8);
+                int occurrences = countOccurrences(content, oldText);
+                if (occurrences == 0) {
+                    throw new IllegalArgumentException("old_text 在文件中未找到，请先 read_file 确认最新内容"
+                            + "（注意缩进、空白与换行必须逐字符一致）");
+                }
+                if (occurrences > 1 && !replaceAll) {
+                    throw new IllegalArgumentException("old_text 在文件中出现 " + occurrences + " 次，无法唯一定位；"
+                            + "请补充上下文使其唯一，或传 replace_all=true 全部替换");
+                }
 
-            String updated = replaceAll
-                    ? content.replace(oldText, newText)
-                    : replaceFirst(content, oldText, newText);
-            // 落盘前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
-            captureSnapshot(file, toolContext);
-            writeFile(file, updated);
+                String updated = replaceAll
+                        ? content.replace(oldText, newText)
+                        : replaceFirst(content, oldText, newText);
+                // 文件版本校验（类 CAS）：锁已挡住工具内的并发写，这里再挡读-写窗口内
+                // 被工具外手段（如并行执行的 shell sed）改过的情况——基于过期内容拒绝覆盖新内容，
+                // 给出明确出路而不是静默吞掉对方的改动
+                String onDisk = Files.readString(file, StandardCharsets.UTF_8);
+                if (!onDisk.equals(content)) {
+                    throw new IllegalArgumentException("本次编辑期间文件已被工具外手段（如 shell 命令）并发修改，"
+                            + "已拒绝写入以免覆盖更新内容；请重新 read_file 确认最新内容后再编辑：" + file);
+                }
+                // 落盘前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
+                captureSnapshot(file, toolContext);
+                writeFile(file, updated);
 
-            String diff = buildUnifiedDiff(content, updated);
-            log.info("edit_file: {}, occurrences={}, replaced={}", file, occurrences, replaceAll ? occurrences : 1);
-            return "已编辑 " + file + "（替换 " + (replaceAll ? occurrences : 1) + " 处）\n" + diff;
+                String diff = buildUnifiedDiff(content, updated);
+                log.info("edit_file: {}, occurrences={}, replaced={}", file, occurrences, replaceAll ? occurrences : 1);
+                return "已编辑 " + file + "（替换 " + (replaceAll ? occurrences : 1) + " 处）\n" + diff;
+            });
         } catch (IllegalArgumentException e) {
             log.warn("edit_file 参数错误, args={}, reason={}", toolContext.getArgs(), e.getMessage());
             return CODE + " 参数错误：" + e.getMessage();

@@ -23,6 +23,14 @@
 - 路径安全由 `FileToolSupport` 统一把关：复用 `PathGuard.resolve`（含符号链接规范化），
   读写默认仅限工作区内，`file.tools.allowOutside=true` 才放开到策略允许根；
   **读校验不能用 `writableRoots` 当边界**（含 /tmp 等，临时目录工作区会被穿越）。
+- **同文件并发写冲突防护**（事故驱动：一轮内对同一文件并行两个 edit_file，双方都报成功但
+  后写者基于旧内容整体覆盖先写者，丢失 import 直到编译才暴露）：
+  `FileToolSupport.PATH_LOCKS` 按**规范化真实路径**维护 ReentrantLock，
+  edit_file（读→定位校验→写整段入锁）/ write_file（存在检查→快照→落盘）/ delete_file（快照→删除，
+  人工确认等待**不进锁**）共用同一把锁：同路径串行、不同路径照常并行；
+  edit_file 锁内落盘前另做版本校验（磁盘内容与读到基准不一致即拒绝写入，
+  挡 shell 等工具外手段的并发改动，错误回执引导重新 read_file）。
+  锁只管进程内工具路径；模型绕过工具直接 shell 写文件仍靠版本校验兜底。
 - `delete_file` 在工具层加三道硬限制：
   1. 路径必须在 repo root 之内（以 `SandboxPolicy.workspaceRoot` 为边界，**不受** `file.tools.allowOutside` 放开）；
   2. 禁止目录删除（只删单文件）；
@@ -40,6 +48,8 @@
   满足 Responses API 分组约束。
 - `AssistantMessageItem.toolCalls` 承载一轮多调用（标量字段保留为首调用快照兼容旧路径）。
 - 配套线程安全：`AgentState.applyEvent` / `LoopGuard.record` / `ConsolePermissionPrompter.confirm` 均已 `synchronized`。
+- 注意「文件读写天然可并发」**只对不同文件成立**：同轮同文件的 edit/write 会在工具层
+  按路径锁串行（见上节），不要在执行器层另加全局串行——那会抹掉并行收益。
 
 ## 工具能力探测按需注册（`com.szh.tool.BinaryProbe`，开关 `tool.probe.binaries.enabled`）
 
@@ -67,4 +77,5 @@
 ## 冒烟
 
 `com.szh.test.P1SmokeTest`（main 直跑，不依赖模型 API）覆盖文件工具链 / 路径安全 / repo_map /
-并行事件有序 / 工厂装配。
+并行事件有序 / 工厂装配；`com.szh.test.FileWriteConflictSmokeTest` 覆盖同文件并发写冲突回归
+（同轮双编辑叠加保留 / 8 路压力 / 异路径不串行 / write+edit 混发一致态）。

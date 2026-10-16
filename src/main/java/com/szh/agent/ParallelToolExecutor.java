@@ -31,8 +31,11 @@ import java.util.concurrent.TimeoutException;
  * function_call_output 统一跟在其后。因此事件按「全部 CallToolStarted → 并发执行 →
  * 全部 CallToolFinished（按调用原序）」落库，执行可以乱序完成，落库顺序必须有序。
  * <p>
- * 线程安全约定：AgentState.applyEvent / LoopGuard.record / 权限确认器都已同步，
- * 工具本身（shell 子进程、文件读写）天然可并发；结果聚合与事件回放在主线程串行完成。
+ * 线程安全约定：AgentState.applyEvent / LoopGuard.record / 权限确认器都已同步。
+ * 注意「文件读写天然可并发」只对<b>不同文件</b>成立：同一轮对同一文件的 edit_file/write_file
+ * 并发执行会各自读到同一份旧内容、后写者整体覆盖先写者（两边都报成功但改动丢失），
+ * 故文件写类工具在工具层按规范化真实路径加锁串行（见 FileToolSupport.withPathLock），
+ * 不同路径仍并发；结果聚合与事件回放在主线程串行完成。
  * @date 2026/9/21
  */
 @Slf4j

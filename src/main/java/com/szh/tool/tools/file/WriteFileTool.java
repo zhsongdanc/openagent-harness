@@ -58,19 +58,24 @@ public class WriteFileTool extends FileToolSupport {
                 throw new IllegalArgumentException("缺少必填参数 content（新建空文件请传空字符串）");
             }
 
-            boolean existed = Files.exists(file);
-            long oldLines = existed ? readLines(file).size() : 0;
+            // 同路径写锁串行化「存在性检查 -> 拍快照 -> 全量落盘」：与 edit_file 共用同一把锁，
+            // 同轮对同一文件的 write + edit 混发时不会交错读写产出半新半旧的脏文件；
+            // write_file 语义本身就是全量覆盖，不做版本拦截，只保证与快照捕获原子
+            return withPathLock(file, () -> {
+                boolean existed = Files.exists(file);
+                long oldLines = existed ? readLines(file).size() : 0;
 
-            // 落盘前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
-            captureSnapshot(file, toolContext);
-            writeFile(file, content);
+                // 落盘前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
+                captureSnapshot(file, toolContext);
+                writeFile(file, content);
 
-            int newLines = content.split("\n", -1).length;
-            log.info("write_file: {}, existed={}, bytes={}, lines={}", file, existed, content.length(), newLines);
-            return existed
-                    ? "已覆盖写入 " + file + "（原 " + oldLines + " 行 -> 新 " + newLines + " 行，"
-                        + content.length() + " 字符）"
-                    : "已创建 " + file + "（" + newLines + " 行，" + content.length() + " 字符）";
+                int newLines = content.split("\n", -1).length;
+                log.info("write_file: {}, existed={}, bytes={}, lines={}", file, existed, content.length(), newLines);
+                return existed
+                        ? "已覆盖写入 " + file + "（原 " + oldLines + " 行 -> 新 " + newLines + " 行，"
+                            + content.length() + " 字符）"
+                        : "已创建 " + file + "（" + newLines + " 行，" + content.length() + " 字符）";
+            });
         } catch (IllegalArgumentException e) {
             log.warn("write_file 参数错误, args={}, reason={}", toolContext.getArgs(), e.getMessage());
             return CODE + " 参数错误：" + e.getMessage();

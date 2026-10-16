@@ -100,11 +100,18 @@ public class DeleteFileTool extends FileToolSupport {
                 }
             }
 
-            // 删除前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
-            captureSnapshot(file, toolContext);
-            Files.delete(file);
-            log.info("delete_file: {} ({} bytes)", file, size);
-            return "已删除 " + rel + "（" + humanSize(size) + "）";
+            // 删除与 edit/write 共用同路径写锁，避免删掉并发编辑中途的半态文件；
+            // 人工确认等待不进锁（可能长时间阻塞 stdin），锁内只做存在复查 + 快照 + 删除
+            return withPathLock(file, () -> {
+                if (!Files.exists(file)) {
+                    throw new IllegalArgumentException("文件已不存在（可能被同轮并发操作删除）: " + file);
+                }
+                // 删除前拍 before-image，供 /rewind 回溯还原（本轮首次改动才记，幂等）
+                captureSnapshot(file, toolContext);
+                Files.delete(file);
+                log.info("delete_file: {} ({} bytes)", file, size);
+                return "已删除 " + rel + "（" + humanSize(size) + "）";
+            });
         } catch (IllegalArgumentException e) {
             log.warn("delete_file 参数错误, args={}, reason={}", toolContext.getArgs(), e.getMessage());
             return CODE + " 参数错误：" + e.getMessage();

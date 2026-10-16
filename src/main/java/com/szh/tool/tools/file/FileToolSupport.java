@@ -15,6 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 文件类工具的公共基类：统一 JSON 入参解析与路径安全口径。
@@ -33,6 +36,36 @@ import java.nio.file.Paths;
  */
 @Slf4j
 public abstract class FileToolSupport implements Tool {
+
+    /**
+     * 路径级写锁表：同一真实路径的写类操作（edit_file / write_file / delete_file）在进程内串行，
+     * 不同路径保持并行。
+     * <p>
+     * 为什么必须有：ParallelToolExecutor 会把一轮内多个工具调用丢进线程池并发执行，而
+     * edit_file 是「读全量 -> 字符串替换 -> 全量写回」的读-改-写，同文件两个并发编辑会各自
+     * 读到同一份旧内容，后写者基于旧快照整体覆盖先写者——两边都回执"成功"，但先写的改动被
+     * 静默丢失（实测：同轮两处编辑丢失 import）。把读-改-写整段收进同一路径锁内，
+     * 后一个编辑必然在前一个落盘后才读文件，两处改动叠加保留。
+     * <p>
+     * key 用 resolvePath 产出的规范化真实路径（PathGuard 已解析符号链接），同一文件经不同
+     * 别名（相对/绝对/tmp 软链）命中同一把锁；单进程 harness 里锁数量 = 被写过的文件数，
+     * 每把锁几十字节，无需回收。
+     */
+    private static final ConcurrentHashMap<String, ReentrantLock> PATH_LOCKS = new ConcurrentHashMap<>();
+
+    /**
+     * 对同一文件的写操作加锁执行（可重入）。调用方把「读文件→校验→写文件」整段放进 action，
+     * 锁的粒度即一次完整的读-改-写；纯计算/diff 生成也放进来无妨（不碰磁盘，不增加竞争窗口）。
+     */
+    protected <T> T withPathLock(Path file, Callable<T> action) throws Exception {
+        ReentrantLock lock = PATH_LOCKS.computeIfAbsent(file.toString(), k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return action.call();
+        } finally {
+            lock.unlock();
+        }
+    }
 
     /**
      * 解析工具入参为 JsonNode，非法/空时返回空对象节点，避免 NPE
