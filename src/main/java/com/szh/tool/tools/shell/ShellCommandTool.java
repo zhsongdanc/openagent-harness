@@ -79,6 +79,18 @@ public abstract class ShellCommandTool implements ShellTool {
         log.info("shell done: cmd={}, exitCode={}, outputLength={}", cmdline, exitCode, raw.length());
 
         // 完整输出存入文件，不再截断；模型通过 read_tool_result 分页查阅
+        return formatResult(exitCode, raw);
+    }
+
+    /**
+     * 结果格式化钩子：子类可覆写以对特定退出码做更精细的翻译，降低模型试错成本。
+     * 基类默认：exit 0 直返原文，非零加 exitCode 后缀，空输出给出明确提示。
+     *
+     * @param exitCode 子进程退出码
+     * @param raw      合并后的 stdout+stderr 原文（可能为空）
+     * @return 面向模型的工具结果文本
+     */
+    protected String formatResult(int exitCode, String raw) {
         if (raw.isBlank()) {
             return exitCode == 0
                     ? getCode() + " 执行完成，无输出"
