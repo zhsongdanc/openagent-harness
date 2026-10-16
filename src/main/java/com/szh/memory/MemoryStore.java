@@ -44,17 +44,27 @@ public interface MemoryStore {
     }
 
     /**
-     * 全文检索召回，按作用域与项目可见性过滤。
-     * <p>可见性规则：{@code projectKey} 为空时不限项目（兼容旧调用方/测试）；否则
-     * GLOBAL 天然跨项目可见，PROJECT/SESSION 仅当 {@code project_key} 等于当前项目
-     * 或为空串（历史遗留、无法归属）时可见；scope 不限（null）时只放行 GLOBAL + 本项目/遗留行。
+     * 全文检索召回并按作用域与项目可见性过滤；不限会话（兼容旧调用方/跨会话管理操作）。
+     */
+    default List<Memory> search(String query, int topK, MemoryScope scope, String projectKey) {
+        return search(query, topK, scope, projectKey, null);
+    }
+
+    /**
+     * 全文检索召回，按作用域、项目与会话可见性过滤。
+     * <p>项目可见性：{@code projectKey} 为空时不限项目；否则 GLOBAL 天然跨项目可见，
+     * PROJECT/SESSION 仅当 {@code project_key} 等于当前项目或为空串（历史遗留）时可见。
+     * <p>会话隔离：{@code sessionId} 非空时，SESSION 作用域的记忆仅当
+     * {@code source_session_id} 等于当前会话或为空串（历史遗留）时可见，
+     * 其他会话的 SESSION 记忆不得泄入；GLOBAL/PROJECT 不受影响。
      *
      * @param query      查询文本（自然语言/关键词均可）
      * @param topK       返回条数上限
      * @param scope      作用域过滤，null 表示不限
      * @param projectKey 当前项目标识（规范化真实路径），null/空 表示不限项目
+     * @param sessionId  当前会话 id，null/空 表示不做会话隔离；非空时仅本会话的 SESSION 记忆可见
      */
-    List<Memory> search(String query, int topK, MemoryScope scope, String projectKey);
+    List<Memory> search(String query, int topK, MemoryScope scope, String projectKey, String sessionId);
 
     /**
      * 按更新时间倒序列出最近若干条（无检索词时的兜底召回）

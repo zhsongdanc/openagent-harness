@@ -225,23 +225,23 @@ public class SqliteMemoryStore implements MemoryStore {
     }
 
     @Override
-    public List<Memory> search(String query, int topK, MemoryScope scope, String projectKey) {
+    public List<Memory> search(String query, int topK, MemoryScope scope, String projectKey, String sessionId) {
         if (topK <= 0) {
             return new ArrayList<>();
         }
-        // 无检索词：按最近召回（可带 scope + 项目可见性）
+        // 无检索词：按最近召回（可带 scope + 项目/会话可见性）
         if (query == null || query.isBlank()) {
-            return queryRecent(scope, topK, projectKey);
+            return queryRecent(scope, topK, projectKey, sessionId);
         }
         // 优先走 FTS5 MATCH（bm25 相关度排序）；trigram 无法匹配的短查询（如 2 字中文词）自动回退 LIKE 子串匹配
         String match = buildMatchExpr(query);
         if (match != null) {
-            List<Memory> hits = queryMatch(match, scope, topK, projectKey);
+            List<Memory> hits = queryMatch(match, scope, topK, projectKey, sessionId);
             if (!hits.isEmpty()) {
                 return hits;
             }
         }
-        return queryLike(query, scope, topK, projectKey);
+        return queryLike(query, scope, topK, projectKey, sessionId);
     }
 
     /**
@@ -269,7 +269,27 @@ public class SqliteMemoryStore implements MemoryStore {
         ps.setInt(params.size() + 1, limit);
     }
 
-    private List<Memory> queryMatch(String match, MemoryScope scope, int topK, String projectKey) {
+    /**
+     * 追加会话可见性条件：SESSION 作用域是「仅当前会话可见」的真隔离边界，而不只是分类标签——
+     * 检索时必须按 source_session_id 过滤，否则同项目其他会话的 SESSION 记忆会泄进 prompt。
+     * <p>sessionId 为空时不做会话过滤（跨会话管理操作/旧调用方）；未归属
+     * （source_session_id 为空串）的历史 SESSION 行按「跨会话可见」保守处理，与 project_key 遗留行同一策略。
+     */
+    private static void addSessionCond(List<String> conds, List<Object> params, MemoryScope scope, String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        if (scope == MemoryScope.SESSION) {
+            conds.add("(source_session_id = ? OR source_session_id = '')");
+            params.add(sessionId);
+        } else if (scope == null) {
+            // 混合检索：非 SESSION 行不受影响，SESSION 行仅本会话或遗留行放行
+            conds.add("(scope <> 'SESSION' OR source_session_id = ? OR source_session_id = '')");
+            params.add(sessionId);
+        }
+    }
+
+    private List<Memory> queryMatch(String match, MemoryScope scope, int topK, String projectKey, String sessionId) {
         List<String> conds = new ArrayList<>();
         List<Object> params = new ArrayList<>();
         conds.add(TABLE + " MATCH ?");
@@ -279,6 +299,7 @@ public class SqliteMemoryStore implements MemoryStore {
             params.add(scope.name());
         }
         addVisibilityCond(conds, params, scope, projectKey);
+        addSessionCond(conds, params, scope, sessionId);
         // bm25 值越小越相关，升序即相关度降序
         String sql = SELECT_COLS + ", bm25(" + TABLE + ") AS score FROM " + TABLE
                 + " WHERE " + String.join(" AND ", conds) + " ORDER BY score LIMIT ?";
@@ -301,7 +322,7 @@ public class SqliteMemoryStore implements MemoryStore {
      * 命中 content/title/keywords 任一即算匹配，按更新时间倒序。
      * trigram 分词器下 SQLite 会对 &gt;=3 字的 LIKE 子串走索引优化。
      */
-    private List<Memory> queryLike(String query, MemoryScope scope, int topK, String projectKey) {
+    private List<Memory> queryLike(String query, MemoryScope scope, int topK, String projectKey, String sessionId) {
         String like = "%" + escapeLike(query.trim()) + "%";
         List<String> conds = new ArrayList<>();
         List<Object> params = new ArrayList<>();
@@ -314,6 +335,7 @@ public class SqliteMemoryStore implements MemoryStore {
             params.add(scope.name());
         }
         addVisibilityCond(conds, params, scope, projectKey);
+        addSessionCond(conds, params, scope, sessionId);
         String sql = SELECT_COLS + " FROM " + TABLE
                 + " WHERE " + String.join(" AND ", conds)
                 + " ORDER BY CAST(updated_at AS INTEGER) DESC LIMIT ?";
@@ -333,10 +355,10 @@ public class SqliteMemoryStore implements MemoryStore {
 
     @Override
     public List<Memory> listRecent(int limit) {
-        return queryRecent(null, limit, null);
+        return queryRecent(null, limit, null, null);
     }
 
-    private List<Memory> queryRecent(MemoryScope scope, int limit, String projectKey) {
+    private List<Memory> queryRecent(MemoryScope scope, int limit, String projectKey, String sessionId) {
         List<Memory> result = new ArrayList<>();
         if (limit <= 0) {
             return result;
@@ -348,6 +370,7 @@ public class SqliteMemoryStore implements MemoryStore {
             params.add(scope.name());
         }
         addVisibilityCond(conds, params, scope, projectKey);
+        addSessionCond(conds, params, scope, sessionId);
         StringBuilder sql = new StringBuilder(SELECT_COLS).append(" FROM ").append(TABLE);
         if (!conds.isEmpty()) {
             sql.append(" WHERE ").append(String.join(" AND ", conds));

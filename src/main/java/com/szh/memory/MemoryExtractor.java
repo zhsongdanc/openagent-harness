@@ -53,7 +53,9 @@ public class MemoryExtractor {
             要求：
             1. 每条记忆聚焦单一主题，原子化；
             2. 若对话中没有值得长期保留的内容，输出 []；
-            3. content 用陈述句，不要包含“我/你/本次对话”等指代。
+            3. content 用陈述句，不要包含“我/你/本次对话”等指代；
+            4. 对话记录可能只是完整对话的片段（开头带有省略标记）：只从可见内容提炼，不要臆测缺失部分；
+            5. 用户的纠正/改口通常出现在对话后段，以其为准，被省略标记隔开的早期表述视为已过时。
             """;
 
     private final Summarizer summarizer;
@@ -98,10 +100,14 @@ public class MemoryExtractor {
     }
 
     /**
-     * 把对话渲染成纯文本（role: content），跳过 system 与 reasoning，整体按预算从头截断
+     * 把对话渲染成纯文本（role: content），跳过 system 与 reasoning。
+     * <p>超预算时<b>从尾部（最新消息）向前保留</b>：用户偏好、纠正、最终决策几乎总出现在对话后段，
+     * 旧的「从头拼接、满了截断」策略会系统性丢掉最新关键信息——比如先说“回答详细点”
+     * 后改口“先给结论再解释”，截断后只剩前者就会沉淀过时偏好。被省略的前文以显式标记
+     * 告知抽取器（配合上面指令第 4/5 条），而不是静默丢弃。
      */
     private String renderTranscript(List<MessageItem> transcript) {
-        StringBuilder sb = new StringBuilder();
+        List<String> lines = new ArrayList<>();
         for (MessageItem item : transcript) {
             if (item instanceof SystemMessageItem || item instanceof ReasoningMessageItem) {
                 continue;
@@ -110,12 +116,41 @@ public class MemoryExtractor {
             if (text == null || text.isBlank()) {
                 continue;
             }
-            sb.append(item.role()).append(": ").append(text).append("\n");
-            if (sb.length() >= maxInputChars) {
+            lines.add(item.role() + ": " + text);
+        }
+        if (lines.isEmpty()) {
+            return "";
+        }
+        int total = 0;
+        for (String line : lines) {
+            total += line.length() + 1;
+        }
+        if (total <= maxInputChars) {
+            return String.join("\n", lines);
+        }
+        // 省略标记本身也占预算；先定条数无法预知确切文本，按最大长度预留
+        int budget = Math.max(0, maxInputChars - 64);
+        int acc = 0;
+        int start = lines.size();
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            int len = lines.get(i).length() + (i == lines.size() - 1 ? 0 : 1);
+            if (acc + len > budget) {
                 break;
             }
+            acc += len;
+            start = i;
         }
-        return sb.length() > maxInputChars ? sb.substring(0, maxInputChars) : sb.toString();
+        StringBuilder sb = new StringBuilder();
+        if (start == lines.size()) {
+            // 连最新一条都放不下：只保留其尾部（信息最密集处），确保抽取器至少见到最近内容
+            String last = lines.get(lines.size() - 1);
+            sb.append("...[前 ").append(lines.size() - 1).append(" 条消息因超出预算被省略，仅保留最新一条的尾部]...\n");
+            sb.append(last, Math.max(0, last.length() - budget), last.length());
+            return sb.toString();
+        }
+        sb.append("...[前 ").append(start).append(" 条消息因超出预算被省略，以下保留最近的对话]...\n");
+        sb.append(String.join("\n", lines.subList(start, lines.size())));
+        return sb.toString();
     }
 
     /**

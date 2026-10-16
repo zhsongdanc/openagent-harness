@@ -39,8 +39,10 @@
   `isChanged` / `isSummarized` 与摘要，供两条运行时决定是否 `replaceModelContext` + 落检查点。
   判断是否变更一律用 `isChanged()`，不要用「比较消息条数」——L0 只截断正文不改条数，比较条数会漏替换。
 - `collapseCompacted()` 折叠时 summary 为 null（异常兜底）原样返回上下文，不改状态。
-- 与长期记忆联动：`compactionHappened` 标记是 `memory.reflection.trigger=on_compaction` 的判据，
-  压缩丢弃的信息会沉淀进长期记忆，二者互补。
+- 与长期记忆联动：`compactionHappened` 标记是 `memory.reflection.trigger=on_compaction` 的判据；
+  另外两条运行时在每次压缩后用 `LongTermMemory.collectDiscarded(压缩前, 压缩后)`（按对象引用对比，
+  同时覆盖 L1 整条裁掉与 L0 截断替换两种丢失）累积丢弃原文，run 末交给「压缩抢救」通道单独蒸馏——
+  run 末常规反思只能看到压缩后上下文，不抢救则摘要未保留的信息永久丢失。
 
 ## 工具结果外存
 

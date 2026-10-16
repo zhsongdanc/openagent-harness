@@ -24,6 +24,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>{@code interval}：每累计 N 个 turn 反思一次（对标 Periodic Nudge）；</li>
  *   <li>{@code session_end}：run 期间不反思，改由会话结束（退出/切换）时统一蒸馏一次。</li>
  * </ul>
+ * 另有一条与上述门控正交的「压缩抢救」通道（{@link #shouldRescueOnCompaction()}）：只要真的
+ * 发生了压缩，被裁掉/截断替换的原文都会单独蒸馏一次——run 末反思拿到的已是压缩后上下文，
+ * 不抢救则摘要未保留的信息永久丢失。仅 {@code off} 会连同抢救一起关闭。
  * 该策略只做「是否触发」的判定，实际的异步执行与落库由 {@link LongTermMemory} 负责。
  *
  * @author demussong
@@ -112,6 +115,15 @@ public class ReflectionPolicy {
     /** 会话结束是否应触发反思：仅 {@code SESSION_END} 模式返回 true */
     public boolean shouldReflectOnSessionEnd() {
         return trigger == Trigger.SESSION_END;
+    }
+
+    /**
+     * 压缩丢弃内容是否应抢救蒸馏：除 {@code OFF}（彻底关闭自动反思）外都应执行。
+     * <p>被压缩裁掉的消息在此之后任何反思时机（run 末/会话末）都无法再从上下文看到，
+     * 属于不可逆信息丢失，因此不受「每 N turn / 会话结束」等节流门控，只尊重总开关。
+     */
+    public boolean shouldRescueOnCompaction() {
+        return trigger != Trigger.OFF;
     }
 
     private AtomicInteger counter(String sessionId) {

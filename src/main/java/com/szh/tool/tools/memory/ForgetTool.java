@@ -69,7 +69,8 @@ public class ForgetTool extends MemoryToolSupport {
         }
         MemoryScope scope = parseScope(text(args, "scope"));
         int limit = integer(args, "limit", DEFAULT_LIMIT);
-        int removed = memory.forgetByQuery(query, scope, limit);
+        // 带上当前会话 id：按 query 删除时不得误删其他会话的 SESSION 记忆（按 id 删除不受限）
+        int removed = memory.forgetByQuery(query, scope, limit, toolContext.getSessionId());
         return removed > 0
                 ? "已删除 " + removed + " 条与「" + query + "」相关的记忆。"
                 : "未找到与「" + query + "」相关的记忆，无删除。";

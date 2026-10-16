@@ -10,8 +10,10 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -26,9 +28,11 @@ import java.util.concurrent.TimeUnit;
  * 三个能力：
  * <ul>
  *   <li>{@link #remember(Memory)} / {@link #rememberAll(List)}：写入记忆（带去重更新与容量淘汰）；</li>
- *   <li>{@link #injectRecall(List, String)} / {@link #recall(String, MemoryScope, int)}：按 query 召回；</li>
- *   <li>{@link #forget(String)} / {@link #forgetByQuery(String, MemoryScope, int)}：遗忘（供工具主动调用）；</li>
- *   <li>{@link #reflectAndStore(String, List, Summarizer)}：run 结束后蒸馏对话为记忆。</li>
+ *   <li>{@link #injectRecall(List, String, String)} / {@link #recall(String, MemoryScope, int, String)}：按 query 召回
+ *       （带项目与会话可见性）；</li>
+ *   <li>{@link #forget(String)} / {@link #forgetByQuery(String, MemoryScope, int, String)}：遗忘（供工具主动调用）；</li>
+ *   <li>{@link #maybeReflectOnRunEnd}：run 结束后按策略异步蒸馏，含「压缩丢弃内容抢救」独立通道；</li>
+ *   <li>{@link #reflectAndStore(String, List, Summarizer)}：同步强制蒸馏入口（测试/特殊场景）。</li>
  * </ul>
  *
  * @author demussong
@@ -178,14 +182,16 @@ public class LongTermMemory {
     }
 
     /**
-     * 在同作用域、同分类、且项目可见的既有记忆里找近似重复项：先用检索拉候选（带项目过滤，
-     * 防止跨项目 merge 覆盖其他仓库的记忆），再逐一算相似度，取超过阈值的最高分者；
-     * 找不到或异常返回 null（即按新记忆插入）。
+     * 在同作用域、同分类、且项目/会话可见的既有记忆里找近似重复项：先用检索拉候选（带项目与会话过滤，
+     * 防止跨项目 merge 覆盖其他仓库的记忆、跨会话覆盖其他会话的 SESSION 记忆），再逐一算相似度，
+     * 取超过阈值的最高分者；找不到或异常返回 null（即按新记忆插入）。
      */
     private Memory findDuplicate(Memory incoming) {
         try {
+            // 去重范围跟随记忆自身的来源会话：incoming 的 sourceSessionId 已盖章（反思/工具均写入），
+            // 只有同会话的 SESSION 候选才参与判重；非 SESSION 作用域不受此条件影响
             List<Memory> candidates = store.search(buildDedupQuery(incoming), dedupCandidates,
-                    incoming.getScope(), resolveProjectKey());
+                    incoming.getScope(), resolveProjectKey(), incoming.getSourceSessionId());
             Memory best = null;
             double bestScore = 0d;
             for (Memory c : candidates) {
@@ -308,23 +314,32 @@ public class LongTermMemory {
     // ---------------- 检索与注入 ----------------
 
     /**
-     * 按 query 召回相关记忆（作用域不限），失败或无结果返回空列表
+     * 按 query 召回相关记忆（作用域不限、不做会话隔离），失败或无结果返回空列表
      */
     public List<Memory> recall(String query) {
-        return recall(query, null, topK);
+        return recall(query, null, topK, null);
     }
 
     /**
-     * 按 query + 作用域召回，limit<=0 时回退默认 topK；scope 为 null 不限作用域
+     * 按 query + 作用域召回，limit<=0 时回退默认 topK；scope 为 null 不限作用域。不做会话隔离。
      */
     public List<Memory> recall(String query, MemoryScope scope, int limit) {
+        return recall(query, scope, limit, null);
+    }
+
+    /**
+     * 按 query + 作用域 + 会话召回。sessionId 非空时，SESSION 作用域的记忆仅本会话可见
+     * （其他会话的 SESSION 行不泄进 prompt）；为 null/空则不做会话过滤（跨会话管理操作）。
+     */
+    public List<Memory> recall(String query, MemoryScope scope, int limit, String sessionId) {
         if (!isActive() || !retrievalEnabled || query == null || query.isBlank()) {
             return Collections.emptyList();
         }
         int k = limit > 0 ? limit : topK;
         try {
-            // 带上当前项目可见性：其他仓库的 PROJECT/SESSION 记忆不得泄进本项目 prompt
-            return store.search(query, k, scope, resolveProjectKey());
+            // 带上当前项目与会话可见性：其他仓库的 PROJECT/SESSION 记忆、其他会话的 SESSION 记忆
+            // 都不得泄进本项目 prompt
+            return store.search(query, k, scope, resolveProjectKey(), sessionId);
         } catch (Throwable t) {
             log.error("LongTermMemory: recall failed, query={}", query, t);
             return Collections.emptyList();
@@ -335,11 +350,15 @@ public class LongTermMemory {
      * 召回并格式化为可注入 prompt 的文本块；无结果返回空串
      */
     public String recallBlock(String query) {
-        return recallBlock(query, null, topK);
+        return recallBlock(query, null, topK, null);
     }
 
     public String recallBlock(String query, MemoryScope scope, int limit) {
-        List<Memory> hits = recall(query, scope, limit);
+        return recallBlock(query, scope, limit, null);
+    }
+
+    public String recallBlock(String query, MemoryScope scope, int limit, String sessionId) {
+        List<Memory> hits = recall(query, scope, limit, sessionId);
         return hits.isEmpty() ? "" : format(hits);
     }
 
@@ -362,10 +381,17 @@ public class LongTermMemory {
     }
 
     /**
-     * 按检索词删除命中的记忆（scope 为 null 不限），返回实际删除条数
+     * 按检索词删除命中的记忆（scope 为 null 不限），返回实际删除条数；不做会话隔离
      */
     public int forgetByQuery(String query, MemoryScope scope, int limit) {
-        List<Memory> hits = recall(query, scope, limit);
+        return forgetByQuery(query, scope, limit, null);
+    }
+
+    /**
+     * 按检索词删除命中的记忆（带会话可见性，供记忆工具在当前会话内安全操作）
+     */
+    public int forgetByQuery(String query, MemoryScope scope, int limit, String sessionId) {
+        List<Memory> hits = recall(query, scope, limit, sessionId);
         int removed = 0;
         for (Memory m : hits) {
             if (forget(m.getId())) {
@@ -384,7 +410,15 @@ public class LongTermMemory {
      * @param query       召回查询（通常是用户本轮输入）
      */
     public void injectRecall(List<MessageItem> callContext, String query) {
-        String block = recallBlock(query);
+        injectRecall(callContext, query, null);
+    }
+
+    /**
+     * 同 {@link #injectRecall(List, String)}，额外传入当前会话 id：SESSION 作用域的记忆
+     * 只在来源会话内注入，其他会话的 SESSION 记忆不得泄进本轮 prompt。
+     */
+    public void injectRecall(List<MessageItem> callContext, String query, String sessionId) {
+        String block = recallBlock(query, null, topK, sessionId);
         if (block.isEmpty() || callContext == null) {
             return;
         }
@@ -398,15 +432,61 @@ public class LongTermMemory {
     // ---------------- 反思抽取 ----------------
 
     /**
-     * run 结束时按策略决定是否反思：命中 {@link ReflectionPolicy} 后<b>异步</b>蒸馏落库，
-     * 不阻塞 run 返回路径。取代旧的「每轮同步 reflectAndStore」。
-     *
-     * @param compactionHappened 本 run 是否真的执行了上下文压缩（on_compaction 策略据此判定）
+     * 计算一次压缩真正「丢弃」的消息：压缩前上下文里，凡是没有原样出现在压缩后上下文中的对象，
+     * 要么被整条删除（L1 摘要吃掉的中段历史），要么被截断替换（L0 清空/截短后换了新对象）——
+     * 这些原文在模型上下文里再也看不到，必须在沉入长期记忆前抢救蒸馏一次。
+     * <p>按对象引用（而非 equals）比较：压缩保留的尾部消息是同一批对象原样透传，命中即视为保留。
+     * 供两条运行时在 {@code maybeCompact} 返回后调用，结果累积到 run 末交给
+     * {@link #maybeReflectOnRunEnd} 的抢救通道。
+     */
+    public static List<MessageItem> collectDiscarded(List<MessageItem> before, List<MessageItem> after) {
+        if (before == null || before.isEmpty() || after == null) {
+            return Collections.emptyList();
+        }
+        Set<MessageItem> kept = Collections.newSetFromMap(new IdentityHashMap<>());
+        kept.addAll(after);
+        List<MessageItem> discarded = new ArrayList<>();
+        for (MessageItem m : before) {
+            // system 不参与抢救：它是装配出的常驻指令，且压缩前后原样保留
+            if (m == null || m instanceof SystemMessageItem) {
+                continue;
+            }
+            if (!kept.contains(m)) {
+                discarded.add(m);
+            }
+        }
+        return discarded;
+    }
+
+    /**
+     * run 结束时按策略决定是否反思（不含抢救素材，保留旧入口兼容测试/调用方）。
      */
     public void maybeReflectOnRunEnd(String sessionId, List<MessageItem> transcript,
                                      Summarizer summarizer, boolean compactionHappened) {
+        maybeReflectOnRunEnd(sessionId, transcript, summarizer, compactionHappened, null);
+    }
+
+    /**
+     * run 结束时决定是否反思：命中 {@link ReflectionPolicy} 后<b>异步</b>蒸馏落库，不阻塞 run 返回路径。
+     * <p>额外承担「压缩抢救」：{@code compactionDiscarded} 是本 run 被压缩从上下文里裁掉/截断替换的
+     * 原文（{@link #collectDiscarded} 算出）。run 末反思只能看到压缩后的 modelContext，摘要没保留的
+     * 信息永久丢失——所以只要真的发生了压缩，丢弃内容就单独提交一次蒸馏，与常规反思的时机门控正交
+     * （仅 trigger=off 时整体关闭），落实「压缩丢弃的信息沉淀进长期记忆」的设计初衷。
+     *
+     * @param compactionHappened    本 run 是否真的执行了上下文压缩（on_compaction 策略据此判定）
+     * @param compactionDiscarded   本 run 被压缩丢弃的消息（可为 null/空）
+     */
+    public void maybeReflectOnRunEnd(String sessionId, List<MessageItem> transcript,
+                                     Summarizer summarizer, boolean compactionHappened,
+                                     List<MessageItem> compactionDiscarded) {
         if (!reflectionReady(summarizer)) {
             return;
+        }
+        if (compactionHappened && compactionDiscarded != null && !compactionDiscarded.isEmpty()
+                && reflectionPolicy.shouldRescueOnCompaction()) {
+            log.info("LongTermMemory: compaction rescue, distilling {} discarded messages of session {}",
+                    compactionDiscarded.size(), sessionId);
+            submitReflection(sessionId, compactionDiscarded, summarizer);
         }
         if (!reflectionPolicy.shouldReflectOnRunEnd(sessionId, compactionHappened)) {
             log.debug("LongTermMemory: reflection skipped by policy (trigger={}, compaction={})",

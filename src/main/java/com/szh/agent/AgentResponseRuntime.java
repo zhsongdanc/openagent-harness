@@ -195,9 +195,10 @@ public class AgentResponseRuntime {
             res = "unknown error";
         }
         agentState.applyEvent(new RunCompletedEvent(sessionId, runId, turnId, round, res));
-        // L4 长期记忆：run 结束后按策略决定是否异步反思抽取（复用 Responses API 摘要器，不再每轮同步蒸馏）
+        // L4 长期记忆：run 结束后按策略决定是否异步反思抽取（复用 Responses API 摘要器，不再每轮同步蒸馏）；
+        // 压缩丢弃的原文走抢救通道，不再依赖反思器从压缩后上下文里看已不可见的内容
         LongTermMemory.get().maybeReflectOnRunEnd(sessionId, agentState.getModelContext(),
-                new ResponseModelSummarizer(model), compactionHappened);
+                new ResponseModelSummarizer(model), compactionHappened, ctx.compactionDiscarded);
         runTrace.setEndTime(System.currentTimeMillis());
         runTrace.printTraceByRunId(runId);
         return res;
@@ -212,11 +213,15 @@ public class AgentResponseRuntime {
     private boolean maybeCompactContext(RunContext ctx, int round) {
         logContextState(round, agentState.getModelContext());
         int beforeCompaction = agentState.getModelContext().size();
-        CompactionResult cr = compactionManager.maybeCompact(new ArrayList<>(agentState.getModelContext()));
+        List<MessageItem> beforeContext = new ArrayList<>(agentState.getModelContext());
+        CompactionResult cr = compactionManager.maybeCompact(beforeContext);
         if (!cr.isChanged()) {
             return false;
         }
         log.info("[Round {}] >>> 压缩已执行: 消息数 {} -> {} <<<", round, beforeCompaction, cr.getMessages().size());
+        // L4 压缩抢救素材：按引用对比压缩前后，拿到真正离开上下文的原文（裁掉或截断替换），
+        // 累积到 run 末交给抢救通道蒸馏——压缩后上下文里这些内容永久不可见
+        ctx.compactionDiscarded.addAll(LongTermMemory.collectDiscarded(beforeContext, cr.getMessages()));
         agentState.replaceModelContext(cr.getMessages());
         // L1 摘要落检查点事件：使 resume 能直接折叠重建到压缩态，无需再调 LLM 重压
         if (cr.isSummarized()) {
@@ -232,8 +237,9 @@ public class AgentResponseRuntime {
      */
     private List<MessageItem> buildCallContext(RunContext ctx) {
         List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
-        // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt
-        LongTermMemory.get().injectRecall(callContext, ctx.userInput);
+        // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt；
+        // 带会话 id：其他会话的 SESSION 记忆不得泄进本轮 prompt
+        LongTermMemory.get().injectRecall(callContext, ctx.userInput, ctx.sessionId);
         // PLAN 模式：往 system prompt 追加规划契约，并把工具收敛为只读子集（会话级模式，每轮读取）
         PlanModePolicy.decorateContext(callContext, ctx.sessionId);
         // 验证闭环软提示：闸门武装时往 system prompt 追加「收尾前自查」契约
@@ -339,6 +345,8 @@ public class AgentResponseRuntime {
         final LoopGuard loopGuard;
         final VerifyGate verifyGate;
         final HandleContext handleContext;
+        /** L4 压缩抢救素材：本 run 历次压缩被裁掉/截断替换的原文，run 末单独蒸馏 */
+        final List<MessageItem> compactionDiscarded = new ArrayList<>();
 
         RunContext(String sessionId, String runId, String turnId, String userInput) {
             this.sessionId = sessionId;

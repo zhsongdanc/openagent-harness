@@ -30,7 +30,8 @@ public class RecallTool extends MemoryToolSupport {
             .code(CODE)
             .type("system")
             .description("从长期记忆中检索与 query 相关的记忆，返回按相关度排序的若干条（含分类、作用域、标题、正文、关键词）。"
-                    + "当你需要此前会话中沉淀的用户偏好、项目事实、经验或决策，而当前上下文没有时使用。")
+                    + "当你需要此前会话中沉淀的用户偏好、项目事实、经验或决策，而当前上下文没有时使用。"
+                    + "SESSION 作用域的记忆按会话隔离：只能检索到当前会话自己的 SESSION 记忆。")
             .parameters("{\"type\":\"object\",\"properties\":{"
                     + "\"query\":{\"type\":\"string\",\"description\":\"检索词，自然语言或关键词均可\"},"
                     + "\"scope\":{\"type\":\"string\",\"description\":\"可选，限定作用域 GLOBAL/PROJECT/SESSION；不传则不限\"},"
@@ -70,7 +71,8 @@ public class RecallTool extends MemoryToolSupport {
         MemoryScope scope = parseScope(text(args, "scope"));
         int limit = integer(args, "limit", DEFAULT_LIMIT);
 
-        List<Memory> hits = memory.recall(query, scope, limit);
+        // 带上当前会话 id：SESSION 作用域按会话隔离，其他会话的 SESSION 记忆不可见
+        List<Memory> hits = memory.recall(query, scope, limit, toolContext.getSessionId());
         if (hits.isEmpty()) {
             return "未检索到与「" + query + "」相关的长期记忆。";
         }
