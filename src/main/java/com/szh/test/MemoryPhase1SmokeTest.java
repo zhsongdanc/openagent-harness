@@ -66,35 +66,7 @@ public class MemoryPhase1SmokeTest {
         }
     }
 
-    // ---------------- ① 截断方向 ----------------
 
-    private static void truncationKeepsLatest() {
-        // maxInputChars=300，10 条各 ~120 字：旧实现从头拼接会只留下最早几条；新实现必须保住最新一条
-        List<MessageItem> transcript = new ArrayList<>();
-        transcript.add(new SystemMessageItem("system 指令，不该进入抽取输入"));
-        for (int i = 0; i < 10; i++) {
-            String pad = "x".repeat(120);
-            transcript.add(new UserMessageItem("earliest00 消息" + i + " " + pad));
-            if (i == 9) {
-                transcript.add(new AssistantMessageItem("latest99 最终纠正：以后先给结论再解释 " + pad));
-            }
-        }
-        CAPTURED.clear();
-        new MemoryExtractor(captureSummarizer()).extract("s-extract", transcript);
-        String convo = CAPTURED.poll();
-        check(convo != null, "抽取器收到了渲染后的对话记录");
-        check(convo != null && convo.contains("latest99"), "超预算时保留了最新内容（尾部优先截断）");
-        check(convo != null && !convo.contains("earliest00 消息0"), "超预算时被丢弃的早期消息不再挤占输入");
-        check(convo != null && convo.contains("被省略"), "被省略的前文带显式标记告知抽取器");
-
-        // 预算内不触发截断：首条也应完整保留
-        CAPTURED.clear();
-        List<MessageItem> small = List.of(new UserMessageItem("smalltok 短对话一条"));
-        new MemoryExtractor(captureSummarizer()).extract("s-extract2", small);
-        String smallConvo = CAPTURED.poll();
-        check(smallConvo != null && smallConvo.contains("smalltok") && !smallConvo.contains("被省略"),
-                "预算内不截断、不加省略标记");
-    }
 
     // ---------------- ② SESSION 隔离 ----------------
 

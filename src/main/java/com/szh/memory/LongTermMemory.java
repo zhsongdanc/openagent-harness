@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -27,11 +26,13 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * 三个能力：
  * <ul>
- *   <li>{@link #remember(Memory)} / {@link #rememberAll(List)}：写入记忆（带去重更新与容量淘汰）；</li>
+ *   <li>{@link #remember(Memory)}：显式写入（write-through）：不排队不入队，但同样交给
+ *       {@link MemoryConsolidator} 做语义整理（ADD/UPDATE/MERGE/SUPERSEDE/SKIP），取代旧「相似即覆盖」；</li>
  *   <li>{@link #injectRecall(List, String, String)} / {@link #recall(String, MemoryScope, int, String)}：按 query 召回
  *       （带项目与会话可见性）；</li>
  *   <li>{@link #forget(String)} / {@link #forgetByQuery(String, MemoryScope, int, String)}：遗忘（供工具主动调用）；</li>
- *   <li>{@link #maybeReflectOnRunEnd}：run 结束后按策略异步蒸馏，含「压缩丢弃内容抢救」独立通道；</li>
+ *   <li>{@link #maybeReflectOnRunEnd}：run 结束后按策略异步蒸馏，含「压缩丢弃内容抢救」独立通道；
+ *       自动通道产出的是 {@link MemoryCandidate} 候选（SQLite 落库、指纹幂等），经整理器决定去留；</li>
  *   <li>{@link #reflectAndStore(String, List, Summarizer)}：同步强制蒸馏入口（测试/特殊场景）。</li>
  * </ul>
  *
@@ -47,16 +48,28 @@ public class LongTermMemory {
     private final boolean retrievalEnabled;
     private final boolean reflectionEnabled;
     private final int topK;
-    /** 写入去重开关：命中近似既有记忆时更新而非新增 */
+    /** 写入去重开关：命中近似既有记忆时整理而非新增（传给整理器，关闭则候选直接 ADD） */
     private final boolean dedupEnabled;
-    /** 去重相似度阈值 [0,1]，达到即判为重复 */
+    /** 相似判定 mid 档下界（原「去重阈值」：达它才认为相关） */
     private final double dedupThreshold;
+    /** 近重复档下界：达它不再细判关系，直接按完全重复/同一事实修正处理 */
+    private final double highThreshold;
     /** 去重时拉取的候选条数 */
     private final int dedupCandidates;
+    /** 候选层总开关（kill switch）：关后不建候选表、不写日志，提取结果直接过整理器落库 */
+    private final boolean candidateEnabled;
+    /** 已处理候选的保留条数，超出后清理最旧 */
+    private final int candidateKeepRecent;
+    /** mid 区间是否允许 LLM 仲裁（仅自动异步通道生效） */
+    private final boolean consolidationLlmEnabled;
     /** 记忆库容量上限，<=0 表示不限；超限按最旧淘汰 */
     private final int capacityMax;
     /** 存储初始化失败时为 null，所有操作自动变为 no-op */
     private final MemoryStore store;
+    /** 候选层存储，null 表示候选层降级/关闭（不持久化候选、不写整理日志） */
+    private final CandidateStore candidateStore;
+    /** 记忆整理器：候选→正式库的六种动作决策核心，store 就绪时非 null */
+    private final MemoryConsolidator consolidator;
     /** 反思触发策略：决定 run/会话结束时是否真的跑 LLM 蒸馏（取代旧的「每轮无条件反思」） */
     private final ReflectionPolicy reflectionPolicy;
     /** JVM 退出前等待在途异步反思任务排空的最长秒数 */
@@ -74,7 +87,11 @@ public class LongTermMemory {
         this.topK = ConfigUtil.getInt("memory.retrieval.topK", 5);
         this.dedupEnabled = ConfigUtil.getBoolean("memory.dedup.enabled", true);
         this.dedupThreshold = ConfigUtil.getDouble("memory.dedup.threshold", 0.72);
+        this.highThreshold = ConfigUtil.getDouble("memory.dedup.highThreshold", 0.92);
         this.dedupCandidates = ConfigUtil.getInt("memory.dedup.candidates", 8);
+        this.candidateEnabled = ConfigUtil.getBoolean("memory.candidate.enabled", true);
+        this.candidateKeepRecent = ConfigUtil.getInt("memory.candidate.keepRecent", 500);
+        this.consolidationLlmEnabled = ConfigUtil.getBoolean("memory.consolidation.llm.enabled", true);
         this.capacityMax = ConfigUtil.getInt("memory.capacity.max", 1000);
         this.reflectionShutdownTimeoutSeconds = ConfigUtil.getInt("memory.reflection.shutdownTimeoutSeconds", 30);
 
@@ -88,10 +105,24 @@ public class LongTermMemory {
             }
         }
         this.store = s;
+        // 候选层初始化失败只关闭候选层（无候选记录/日志），不影响正式库主链路（铁律 6）
+        CandidateStore cs = null;
+        if (s != null && candidateEnabled) {
+            try {
+                cs = new SqliteCandidateStore();
+            } catch (Throwable t) {
+                log.error("LongTermMemory: candidate store init failed, candidate layer disabled. ({})", t.toString());
+            }
+        }
+        this.candidateStore = cs;
+        this.consolidator = s == null ? null
+                : new MemoryConsolidator(s, cs, dedupEnabled, dedupThreshold, highThreshold,
+                        dedupCandidates, consolidationLlmEnabled);
         this.reflectionPolicy = new ReflectionPolicy();
-        log.info("LongTermMemory: enabled={}, retrieval={}, reflection={}(trigger={}), dedup={}(th={}), capacity={}, storeReady={}",
-                enabled, retrievalEnabled, reflectionEnabled, reflectionPolicy.getTrigger(), dedupEnabled, dedupThreshold,
-                capacityMax > 0 ? capacityMax : "unlimited", store != null);
+        log.info("LongTermMemory: enabled={}, retrieval={}, reflection={}(trigger={}), dedup={}(th={}-{}), "
+                        + "candidate={}, capacity={}, storeReady={}",
+                enabled, retrievalEnabled, reflectionEnabled, reflectionPolicy.getTrigger(), dedupEnabled,
+                dedupThreshold, highThreshold, cs != null, capacityMax > 0 ? capacityMax : "unlimited", store != null);
         // 退出前尽量把在途的异步反思落库，避免 --prompt 一次性执行或 REPL 退出时丢失最后一次蒸馏
         if (reflectionEnabled && store != null) {
             Runtime.getRuntime().addShutdownHook(new Thread(this::awaitPendingReflection, "ltm-reflection-shutdown"));
@@ -154,6 +185,13 @@ public class LongTermMemory {
 
     // ---------------- 写入 ----------------
 
+    /**
+     * 显式写入（write-through）：不排队、同步返回记忆 id（RememberTool 契约），但内部复用
+     * {@link MemoryConsolidator} 的语义整理决策（不开 LLM 仲裁，避免给请求路径加一次模型调用），
+     * 取代旧「相似即覆盖」的 findDuplicate+merge：相关但不同类的内容各自保留，同一事实的修正
+     * 才写回旧行，旧值一律归档整理日志。
+     * <p>候选层就绪时同指纹的重复写入幂等：直接返回首次写入指向的记忆 id，不重复整理。
+     */
     public String remember(Memory memory) {
         if (!isActive() || memory == null
                 || memory.getContent() == null || memory.getContent().isBlank()) {
@@ -164,17 +202,26 @@ public class LongTermMemory {
             if (memory.getProjectKey() == null || memory.getProjectKey().isBlank()) {
                 memory.setProjectKey(resolveProjectKey());
             }
-            Memory target = memory;
-            if (dedupEnabled) {
-                Memory dup = findDuplicate(memory);
-                if (dup != null) {
-                    target = merge(dup, memory);
-                    log.info("LongTermMemory: dedup hit, update existing id={} instead of insert", dup.getId());
+            MemoryCandidate cand = MemoryCandidate.fromMemory(memory, MemoryCandidate.SourceType.EXPLICIT);
+            cand.setFingerprint(MemoryCandidate.computeFingerprint(cand));
+            if (candidateStore != null) {
+                if (!candidateStore.insertIfAbsent(cand)) {
+                    MemoryCandidate existing = candidateStore.findByFingerprint(cand.getFingerprint());
+                    // 同指纹已整理成功且目标记忆仍在：幂等回执，不重复写库
+                    if (existing != null && existing.getStatus() == MemoryCandidate.Status.APPLIED
+                            && existing.getResultMemoryId() != null
+                            && store.findById(existing.getResultMemoryId()) != null) {
+                        return existing.getResultMemoryId();
+                    }
+                    if (existing != null) {
+                        // 此前 FAILED/DISCARDED：复用原记录重新整理，保留首次提取的溯源字段
+                        cand = existing;
+                    }
                 }
             }
-            store.save(target);
+            MemoryConsolidator.Result r = consolidator.apply(cand, false, null);
             evictIfOverCapacity();
-            return target.getId();
+            return r.memoryId;
         } catch (Throwable t) {
             log.error("LongTermMemory: remember failed", t);
             return null;
@@ -182,92 +229,15 @@ public class LongTermMemory {
     }
 
     /**
-     * 在同作用域、同分类、且项目/会话可见的既有记忆里找近似重复项：先用检索拉候选（带项目与会话过滤，
-     * 防止跨项目 merge 覆盖其他仓库的记忆、跨会话覆盖其他会话的 SESSION 记忆），再逐一算相似度，
-     * 取超过阈值的最高分者；找不到或异常返回 null（即按新记忆插入）。
+     * 批量显式写入，逐条走 {@link #remember(Memory)}。
      */
-    private Memory findDuplicate(Memory incoming) {
-        try {
-            // 去重范围跟随记忆自身的来源会话：incoming 的 sourceSessionId 已盖章（反思/工具均写入），
-            // 只有同会话的 SESSION 候选才参与判重；非 SESSION 作用域不受此条件影响
-            List<Memory> candidates = store.search(buildDedupQuery(incoming), dedupCandidates,
-                    incoming.getScope(), resolveProjectKey(), incoming.getSourceSessionId());
-            Memory best = null;
-            double bestScore = 0d;
-            for (Memory c : candidates) {
-                if (!sameCategory(c, incoming)) {
-                    continue;
-                }
-                if (incoming.getId() != null && incoming.getId().equals(c.getId())) {
-                    continue;
-                }
-                double score = MemorySimilarity.similarity(incoming, c);
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = c;
-                }
-            }
-            return bestScore >= dedupThreshold ? best : null;
-        } catch (Throwable t) {
-            log.warn("LongTermMemory: findDuplicate failed, treat as new. ({})", t.toString());
-            return null;
+    public void rememberAll(List<Memory> memories) {
+        if (!isActive() || memories == null) {
+            return;
         }
-    }
-
-    /**
-     * 合并新旧记忆：沿用旧记忆的 id 与 createdAt（save 会覆盖同 id），正文/标题以新值为准，
-     * 关键词取并集，来源会话优先用新值。
-     */
-    private Memory merge(Memory old, Memory incoming) {
-        Memory merged = new Memory();
-        merged.setId(old.getId());
-        merged.setCreatedAt(old.getCreatedAt());
-        merged.setContent(incoming.getContent());
-        merged.setTitle(incoming.getTitle() != null && !incoming.getTitle().isBlank()
-                ? incoming.getTitle() : old.getTitle());
-        merged.setCategory(incoming.getCategory() != null ? incoming.getCategory() : old.getCategory());
-        merged.setScope(old.getScope() != null ? old.getScope() : incoming.getScope());
-        merged.setKeywords(unionKeywords(old.getKeywords(), incoming.getKeywords()));
-        merged.setSourceSessionId(incoming.getSourceSessionId() != null
-                ? incoming.getSourceSessionId() : old.getSourceSessionId());
-        // 项目归属：旧行已有主则继承（同项目才会命中去重），遗留空键收编为写入方项目
-        merged.setProjectKey(old.getProjectKey() != null && !old.getProjectKey().isBlank()
-                ? old.getProjectKey() : incoming.getProjectKey());
-        return merged;
-    }
-
-    private static List<String> unionKeywords(List<String> a, List<String> b) {
-        LinkedHashSet<String> set = new LinkedHashSet<>();
-        for (List<String> src : List.of(a == null ? List.<String>of() : a, b == null ? List.<String>of() : b)) {
-            for (String s : src) {
-                if (s != null && !s.isBlank()) {
-                    set.add(s.trim());
-                }
-            }
+        for (Memory m : memories) {
+            remember(m);
         }
-        return new ArrayList<>(set);
-    }
-
-    private static boolean sameCategory(Memory a, Memory b) {
-        MemoryCategory ca = a.getCategory() == null ? MemoryCategory.OTHER : a.getCategory();
-        MemoryCategory cb = b.getCategory() == null ? MemoryCategory.OTHER : b.getCategory();
-        return ca == cb;
-    }
-
-    /**
-     * 构造去重候选检索词：标题 + 关键词 + 正文前若干字，尽量命中相似条目
-     */
-    private static String buildDedupQuery(Memory m) {
-        StringBuilder sb = new StringBuilder();
-        if (m.getTitle() != null) {
-            sb.append(m.getTitle()).append(' ');
-        }
-        if (m.getKeywords() != null && !m.getKeywords().isEmpty()) {
-            sb.append(String.join(" ", m.getKeywords())).append(' ');
-        }
-        String content = m.getContent() == null ? "" : m.getContent().trim();
-        sb.append(content.length() > 60 ? content.substring(0, 60) : content);
-        return sb.toString().trim();
     }
 
     /**
@@ -299,15 +269,6 @@ public class LongTermMemory {
                     removed, projectKey, capacityMax);
         } catch (Throwable t) {
             log.error("LongTermMemory: evict failed", t);
-        }
-    }
-
-    public void rememberAll(List<Memory> memories) {
-        if (!isActive() || memories == null) {
-            return;
-        }
-        for (Memory m : memories) {
-            remember(m);
         }
     }
 
@@ -472,9 +433,11 @@ public class LongTermMemory {
      * 原文（{@link #collectDiscarded} 算出）。run 末反思只能看到压缩后的 modelContext，摘要没保留的
      * 信息永久丢失——所以只要真的发生了压缩，丢弃内容就单独提交一次蒸馏，与常规反思的时机门控正交
      * （仅 trigger=off 时整体关闭），落实「压缩丢弃的信息沉淀进长期记忆」的设计初衷。
+     * <p>两条通道输入不相交但可能蒸出同一事实（被压缩消息同时也在压缩后上下文周边），候选层的
+     * 指纹幂等保证同一事实只正式写入一次（第一阶段遗留的双写代价在此收口）。
      *
-     * @param compactionHappened    本 run 是否真的执行了上下文压缩（on_compaction 策略据此判定）
-     * @param compactionDiscarded   本 run 被压缩丢弃的消息（可为 null/空）
+     * @param compactionHappened  本 run 是否真的执行了上下文压缩（on_compaction 策略据此判定）
+     * @param compactionDiscarded 本 run 被压缩丢弃的消息（可为 null/空）
      */
     public void maybeReflectOnRunEnd(String sessionId, List<MessageItem> transcript,
                                      Summarizer summarizer, boolean compactionHappened,
@@ -486,14 +449,14 @@ public class LongTermMemory {
                 && reflectionPolicy.shouldRescueOnCompaction()) {
             log.info("LongTermMemory: compaction rescue, distilling {} discarded messages of session {}",
                     compactionDiscarded.size(), sessionId);
-            submitReflection(sessionId, compactionDiscarded, summarizer);
+            submitReflection(sessionId, compactionDiscarded, summarizer, MemoryCandidate.SourceType.COMPACTION_RESCUE);
         }
         if (!reflectionPolicy.shouldReflectOnRunEnd(sessionId, compactionHappened)) {
             log.debug("LongTermMemory: reflection skipped by policy (trigger={}, compaction={})",
                     reflectionPolicy.getTrigger(), compactionHappened);
             return;
         }
-        submitReflection(sessionId, transcript, summarizer);
+        submitReflection(sessionId, transcript, summarizer, MemoryCandidate.SourceType.RUN_REFLECTION);
     }
 
     /**
@@ -505,44 +468,67 @@ public class LongTermMemory {
             return;
         }
         // 同步快照后直接蒸馏：transcript 传副本，规避调用方随后清空/复用上下文
-        doReflect(sessionId, new ArrayList<>(transcript), summarizer);
+        doReflect(sessionId, new ArrayList<>(transcript), summarizer, MemoryCandidate.SourceType.SESSION_END);
     }
 
     /**
-     * 立即同步蒸馏并落库（不经策略门控）。保留给测试或需要强制反思的场景；
+     * 立即同步蒸馏并整理落库（不经策略门控）。保留给测试或需要强制反思的场景；
      * 运行时主流程请改用 {@link #maybeReflectOnRunEnd} / {@link #maybeReflectOnSessionEnd}。
      */
     public void reflectAndStore(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
         if (!reflectionReady(summarizer)) {
             return;
         }
-        doReflect(sessionId, new ArrayList<>(transcript), summarizer);
+        doReflect(sessionId, new ArrayList<>(transcript), summarizer, MemoryCandidate.SourceType.RUN_REFLECTION);
     }
 
     /** 反思是否具备执行条件：记忆可用 + 反思开关开 + 有摘要器 */
     private boolean reflectionReady(Summarizer summarizer) {
-        return isActive() && reflectionEnabled && summarizer != null;
+        return isActive() && reflectionEnabled && summarizer != null && consolidator != null;
     }
 
     /**
      * 把反思任务提交到后台单线程执行器。<b>提交时即对 transcript 做快照</b>，
      * 否则异步任务真正跑起来时，主线程可能已进入下一轮并 replaceModelContext，读到被改动的上下文。
      */
-    private void submitReflection(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
+    private void submitReflection(String sessionId, List<MessageItem> transcript, Summarizer summarizer,
+                                  MemoryCandidate.SourceType sourceType) {
         final List<MessageItem> snapshot = new ArrayList<>(transcript);
         try {
-            ensureExecutor().submit(() -> doReflect(sessionId, snapshot, summarizer));
+            ensureExecutor().submit(() -> doReflect(sessionId, snapshot, summarizer, sourceType));
         } catch (Throwable t) {
             // 执行器已关闭（如正在退出）等：降级为 no-op，绝不打断主流程
+            // 候选未落库即无任何痕迹，但反思本身丢失可接受——下一次抢救/反思会重新看到这些信息
             log.warn("LongTermMemory: submit reflection failed, sessionId={} ({})", sessionId, t.toString());
         }
     }
 
-    /** 反思本体：蒸馏成长期记忆并落库；任何异常吞掉，绝不外抛 */
-    private void doReflect(String sessionId, List<MessageItem> transcript, Summarizer summarizer) {
+    /**
+     * 反思本体：蒸馏成候选→指纹幂等落库→逐条交给整理器落正式库；任何异常吞掉，绝不外抛。
+     * <p>候选层就绪时重复指纹的候选直接跳过（不重复整理）；候选层降级（candidateStore=null）时
+     * 不持久化候选、不写整理日志，提取结果仍过整理器落库——kill switch 只关「候选记录」不回滚
+     * 第一阶段的语义整理能力。
+     */
+    private void doReflect(String sessionId, List<MessageItem> transcript, Summarizer summarizer,
+                           MemoryCandidate.SourceType sourceType) {
         try {
-            List<Memory> memories = new MemoryExtractor(summarizer).extract(sessionId, transcript);
-            rememberAll(memories);
+            List<MemoryCandidate> candidates = new MemoryExtractor(summarizer).extract(sessionId, transcript, sourceType);
+            for (MemoryCandidate cand : candidates) {
+                if (cand.getProjectKey() == null || cand.getProjectKey().isBlank()) {
+                    cand.setProjectKey(resolveProjectKey());
+                }
+                cand.setFingerprint(MemoryCandidate.computeFingerprint(cand));
+                if (candidateStore != null && !candidateStore.insertIfAbsent(cand)) {
+                    log.debug("LongTermMemory: duplicate candidate skipped by fingerprint, session={}", sessionId);
+                    continue;
+                }
+                consolidator.apply(cand, true, summarizer);
+            }
+            if (candidateStore != null) {
+                candidateStore.pruneProcessed(candidateKeepRecent);
+            }
+            // 整理器直接写正式库不经 remember，淘汰在此统一补做（旧路径由 rememberAll→remember 承担）
+            evictIfOverCapacity();
         } catch (Throwable t) {
             log.error("LongTermMemory: reflect failed, sessionId={}", sessionId, t);
         }
@@ -568,23 +554,47 @@ public class LongTermMemory {
 
     /**
      * 等待在途异步反思任务排空（JVM shutdown hook 调用）：优雅关闭 + 限时等待，超时则强关。
-     * 幂等：执行器为 null（从未提交过反思）时直接返回。
+     * 幂等：执行器为 null（从未提交过反思）时也要 drain——候选可能由更早的提交落库后
+     * 因异常停在 PENDING，退出前再兜底整理一次。
      */
     public void awaitPendingReflection() {
         ExecutorService ex = reflectionExecutor;
-        if (ex == null) {
-            return;
-        }
-        ex.shutdown();
-        try {
-            if (!ex.awaitTermination(reflectionShutdownTimeoutSeconds, TimeUnit.SECONDS)) {
-                log.warn("LongTermMemory: reflection drain timed out after {}s, forcing shutdown",
-                        reflectionShutdownTimeoutSeconds);
+        if (ex != null) {
+            ex.shutdown();
+            try {
+                if (!ex.awaitTermination(reflectionShutdownTimeoutSeconds, TimeUnit.SECONDS)) {
+                    log.warn("LongTermMemory: reflection drain timed out after {}s, forcing shutdown",
+                            reflectionShutdownTimeoutSeconds);
+                    ex.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 ex.shutdownNow();
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            ex.shutdownNow();
+        }
+        drainPendingCandidates();
+    }
+
+    /**
+     * 兑底 drain：把停留在 PENDING 的候选（提交失败/整理异常等残留）整理一次。
+     * <p>此处不开 LLM 仲裁：退出路径上没有反思请求的 Summarizer 引用，且中区间启发式已够安全；
+     * 仍失败的候选会停在 FAILED，下次进程启动后的写入/反思不重复处理已终态记录。
+     */
+    private void drainPendingCandidates() {
+        if (candidateStore == null || consolidator == null) {
+            return;
+        }
+        try {
+            List<MemoryCandidate> pending = candidateStore.listPending(200);
+            if (pending.isEmpty()) {
+                return;
+            }
+            log.info("LongTermMemory: draining {} pending candidates", pending.size());
+            for (MemoryCandidate cand : pending) {
+                consolidator.apply(cand, false, null);
+            }
+        } catch (Throwable t) {
+            log.warn("LongTermMemory: candidate drain failed ({})", t.toString());
         }
     }
 

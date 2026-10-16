@@ -71,6 +71,35 @@ BASE_SYSTEM_PROMPT（内置，含规划决策契约）
 （`remember`/`recall`/`forget`，每轮 `injectRecall` 召回注入，反思抽取由 `memory.reflection.trigger`
 控制，默认 `on_compaction`）。两者唯一的共同点是都往 system prompt 尾部追加，都要守「不破坏前缀 cache」这条。
 
+### L4 写入的两条通道（第二阶段）
+
+自动提取**不直接产正式记忆**，中间多了一层候选（`com.szh.memory`，候选/日志是派生表，
+**不进事件流**——记忆提取是非确定性 LLM 调用，当事件会在回放时重复写入）：
+
+- 自动通道（异步，后台单线程）：`MemoryExtractor.extract(sessionId, transcript, sourceType)` 产
+  `MemoryCandidate`（带 `evidence` 提取依据 + `confidence` 自评可信度）→ 按 `fingerprint` 幂等落库 →
+  `MemoryConsolidator.apply(allowLlmArbitration=true)` 整理落正式库。
+  抢救与 run 末反思两条通道输入不相交但可能蒸出同一事实，靠指纹幂等收口（不再双写）。
+- 显式通道（同步）：`RememberTool → LongTermMemory.remember()` 走 write-through——不入队、立即返回 id，
+  但同样交给整理器（不开 LLM 仲裁，避免给请求路径加一次模型调用），并留下 `EXPLICIT` 候选记录便于追溯。
+
+### 整理动作（取代第一阶段「相似即覆盖」）
+
+相似度分两档（`memory.dedup.threshold`=0.72 为 mid 下界，`memory.dedup.highThreshold`=0.92 为近重复下界）：
+
+| 动作 | 触发 |
+| --- | --- |
+| `SKIP` | 规范化正文完全相同，只指向既有 id |
+| `UPDATE` | 同一事实的修正，复用旧 id，旧值归档整理日志 |
+| `MERGE` | 互补细化，LLM 生成合并文本写回旧 id |
+| `SUPERSEDE` | 冲突的新事实取代旧行：旧行 JSON 进日志后删除（**不给 FTS5 加状态列**，避免整表重建迁移） |
+| `ADD` | 无可靠相似项，或 mid 档判定「相关的两件事」（异分类） |
+| `DISCARD` | `confidence=low` 的自动候选（显式写入不受此限） |
+
+mid 档（相关但未必同一事实）在自动通道走 LLM 仲裁（`memory.consolidation.llm.enabled`），输出非法则回退
+启发式（同分类→UPDATE、异分类→ADD）。候选层 `memory.candidate.enabled=false` 或建表失败时整体降级：
+不持久化候选、不写日志，但**语义整理能力保留**。
+
 ## 冒烟
 
 `com.szh.test.InstructionMemorySmokeTest`（main 直跑，临时目录搭目录链 + Fake workspace，不依赖模型）覆盖：

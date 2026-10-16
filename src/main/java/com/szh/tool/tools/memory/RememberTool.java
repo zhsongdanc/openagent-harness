@@ -27,7 +27,7 @@ public class RememberTool extends MemoryToolSupport {
             .code(CODE)
             .type("system")
             .description("把一条值得跨会话长期保留的信息写入长期记忆（用户偏好、项目事实、开发规范、经验教训、踩坑、工程决策等）。"
-                    + "写入会自动去重：若已存在高度相似的同分类记忆，则更新它而非新增。"
+                    + "写入会做语义整理：发现相关的既有记忆时按修正/合并/取代处理而非盲目覆盖，完全重复则直接返回既有 id。"
                     + "content 必填且应自包含（脱离本次对话也能看懂）。返回落库的记忆 id，可用于后续 forget。")
             .parameters("{\"type\":\"object\",\"properties\":{"
                     + "\"content\":{\"type\":\"string\",\"description\":\"记忆正文，自包含、陈述句、聚焦单一主题\"},"
