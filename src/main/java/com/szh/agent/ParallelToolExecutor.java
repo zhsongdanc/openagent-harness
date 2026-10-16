@@ -126,11 +126,20 @@ public class ParallelToolExecutor {
             for (ToolCall call : calls) {
                 futures.add(executor.submit(() -> runSingle(call, env)));
             }
+            // 整轮总超时的绝对截止时刻：从提交任务时起算，而非每次 get() 时重新计时。
+            // 否则前一个卡死任务会把主线程阻塞满一个预算，后面任务又被赋予全新的完整预算，
+            // N 个任务串行排队时实际耗时会逼近 ROUND_TIMEOUT_SECONDS × N，偏离"总超时"语义。
+            long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(ROUND_TIMEOUT_SECONDS);
             List<ToolOutcome> outcomes = new ArrayList<>();
             for (int i = 0; i < futures.size(); i++) {
                 ToolCall call = calls.get(i);
+                // 剩余预算 = 绝对截止时刻 - 当前时刻；越界即为负，直接判超时不再空等。
+                long remainingNanos = deadlineNanos - System.nanoTime();
                 try {
-                    outcomes.add(futures.get(i).get(ROUND_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+                    if (remainingNanos <= 0) {
+                        throw new TimeoutException();
+                    }
+                    outcomes.add(futures.get(i).get(remainingNanos, TimeUnit.NANOSECONDS));
                 } catch (TimeoutException e) {
                     futures.get(i).cancel(true);
                     outcomes.add(new ToolOutcome(call.toolCallId(), call.toolCode(), call.toolArgs(),
