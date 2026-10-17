@@ -70,6 +70,17 @@ public interface MemoryStore {
      * 按更新时间倒序列出最近若干条（无检索词时的兜底召回）
      */
     List<Memory> listRecent(int limit);
+    
+    /**
+     * 按分类（可选限定作用域）列出最近的记忆，按更新时间倒序。
+     * <p>供第三阶段「核心画像」常驻聚合：把全部 {@link MemoryCategory#PROFILE} 行拼成一小段
+     * 固定注入 system prompt 的文本，不依赖当前问题的关键词召回。category 为 null 不限分类。
+     *
+     * @param category 分类过滤，null 不限
+     * @param scope    作用域过滤，null 不限
+     * @param limit    条数上限
+     */
+    List<Memory> listByCategory(MemoryCategory category, MemoryScope scope, int limit);
 
     /**
      * 记忆总条数

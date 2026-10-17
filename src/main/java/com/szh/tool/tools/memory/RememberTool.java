@@ -28,11 +28,13 @@ public class RememberTool extends MemoryToolSupport {
             .type("system")
             .description("把一条值得跨会话长期保留的信息写入长期记忆（用户偏好、项目事实、开发规范、经验教训、踩坑、工程决策等）。"
                     + "写入会做语义整理：发现相关的既有记忆时按修正/合并/取代处理而非盲目覆盖，完全重复则直接返回既有 id。"
-                    + "content 必填且应自包含（脱离本次对话也能看懂）。返回落库的记忆 id，可用于后续 forget。")
+                    + "content 必填且应自包含（脱离本次对话也能看懂）。返回落库的记忆 id，可用于后续 forget。"
+                    + "若要登记用户长期不变的核心特征（回答风格、熟悉技术栈、长期目标）使其每次会话开始即常驻可见，用 category=PROFILE、scope=GLOBAL；"
+                    + "若是尚未完成的待办/目标而非知识，用 goal 工具而非本工具。")
             .parameters("{\"type\":\"object\",\"properties\":{"
                     + "\"content\":{\"type\":\"string\",\"description\":\"记忆正文，自包含、陈述句、聚焦单一主题\"},"
                     + "\"title\":{\"type\":\"string\",\"description\":\"5~20 字的简短标题\"},"
-                    + "\"category\":{\"type\":\"string\",\"description\":\"分类，枚举：USER_PREFERENCE/PROJECT_INFO/DEVELOPMENT_SPEC/EXPERIENCE/PITFALL/DECISION/OTHER，默认 OTHER\"},"
+                    + "\"category\":{\"type\":\"string\",\"description\":\"分类，枚举：USER_PREFERENCE/PROJECT_INFO/DEVELOPMENT_SPEC/EXPERIENCE/PITFALL/DECISION/PROFILE(核心画像，建议配 scope=GLOBAL)/OTHER，默认 OTHER\"},"
                     + "\"scope\":{\"type\":\"string\",\"description\":\"作用域，枚举：GLOBAL(跨项目用户级)/PROJECT(项目内)/SESSION(仅本会话)，默认 PROJECT\"},"
                     + "\"keywords\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"2~6 个便于检索的关键词\"}"
                     + "},\"required\":[\"content\"]}")

@@ -100,6 +100,29 @@ mid 档（相关但未必同一事实）在自动通道走 LLM 仲裁（`memory.
 启发式（同分类→UPDATE、异分类→ADD）。候选层 `memory.candidate.enabled=false` 或建表失败时整体降级：
 不持久化候选、不写日志，但**语义整理能力保留**。
 
+### L4 读取侧与画像/目标（第三阶段）
+
+第二阶段解决「写进来的东西干不干净」，第三阶段解决「用起来像不像个人助手」——都发生在 `injectRecall` 这一条
+路径上（两条运行时都传 `agentState.getModelContext()` 作近期上下文），组装成一个受**总预算**约束的注入块，
+按 **画像 > 目标 > 召回** 优先级拼接（`LongTermMemory.buildMemoryContextBlock`，包私有，测试经公开 `injectRecall` 观测）：
+
+- **核心画像**：新增 `MemoryCategory.PROFILE`（+ `from()` 认「画像/档案」别名），约定 `scope=GLOBAL` 跨项目可见。
+  由 `store.listByCategory(PROFILE, GLOBAL, …)` 常驻聚合成一小段文本，**每轮必注入、不依赖关键词召回**——
+  「用户是谁、长期偏好」这类低频高价值事实不该等模型问起才想起。**复用 `memory_fts` 而非新表/独立文档**：
+  画像就是普通记忆，自动继承第二阶段的整理/幂等/降级链路，零迁移成本。
+- **活动目标**：独立 `memory_goals` 普通表（`SqliteGoalStore`，**非 FTS5**，避开整表重建迁移），带状态机
+  `ACTIVE→DONE/CANCELLED/SUPERSEDED`（终态补 `completedAt`）。进行中的目标同样常驻注入，让助手知道「手上还有什么没做完」。
+  目标是**待办而非知识**，故走 `GoalTool`（`goal`，action 分派）而非 `remember`；目标层不可用（`memory.goals.enabled=false`
+  或建表失败）时 `ToolRegistry` 直接不注册该工具，`LongTermMemory` 各 goal 门面返回 false/null 静默降级。
+- **读取侧三优化**（都不增加模型调用）：① 短输入查询扩展（本轮输入 <`memory.retrieval.query.expandMinLen`=12 且有近期对话时，
+  用尾部非 system 消息补全检索词，缓解「那为什么这样设计？」这类指代追问召回落空）；② 相关性下限过滤
+  （`memory.retrieval.minScore`，默认 0 关闭）；③ 单条正文截断（`memory.retrieval.perItemMaxChars`=600）。整个注入块封顶
+  `memory.retrieval.inject.maxChars`=6000，超预算的段落截断加「…」。**默认值一律保持既有召回行为不变**。
+- **可观测性 / 人工纠正**：REPL `/memory` 在 L3 装配明细之下追加 L4 段（总条数/画像/进行中目标/最近记忆/最近整理决策日志，
+  全部读 `LongTermMemory` 的观测访问器，整块再包一层 try-catch，展示失败绝不拖垮 REPL）；`/memory forget <id>` 走 `forget(id)`。
+  ⚠️ `forget`/`deleteGoal` 已改为**删前先查**、返回值表示「确实删掉了」——`ForgetTool`/`GoalTool`/`/memory forget` 都据此
+  区分「已删除」与「本就不存在」，别再退回无条件返回 true。
+
 ## 冒烟
 
 `com.szh.test.InstructionMemorySmokeTest`（main 直跑，临时目录搭目录链 + Fake workspace，不依赖模型）覆盖：

@@ -19,6 +19,12 @@ public enum MemoryCategory {
     PITFALL,
     /** 工程决策：结论、权衡、被否决的备选方案 */
     DECISION,
+    /**
+     * 核心个人画像（第三阶段）：用户长期不变的高价值特征——回答风格偏好、熟悉的技术栈与熟练度、
+     * 长期目标与稳定工作习惯。与普通 USER_PREFERENCE 的区别在于「常驻」：不靠当前问题的关键词召回，
+     * 而是每次会话开始即聚合成一小段固定注入 system prompt，配合 scope=GLOBAL 跨项目可见。
+     */
+    PROFILE,
     /** 其它未归类 */
     OTHER,
     ;
@@ -52,6 +58,10 @@ public enum MemoryCategory {
             }
             if (v.contains("EXPERIENCE") || v.contains("LESSON")) {
                 return EXPERIENCE;
+            }
+            // 第三阶段：核心画像的近义写法（画像/档案/profile）
+            if (v.contains("PROFILE") || v.contains("画像") || v.contains("档案")) {
+                return PROFILE;
             }
             return OTHER;
         }

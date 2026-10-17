@@ -62,12 +62,37 @@ public class LongTermMemory {
     private final int candidateKeepRecent;
     /** mid 区间是否允许 LLM 仲裁（仅自动异步通道生效） */
     private final boolean consolidationLlmEnabled;
+    // ---------------- 第三阶段：画像 / 活动目标 / 检索使用侧优化 ----------------
+    /** 核心画像常驻开关：关闭则不把 PROFILE 记忆注入 prompt */
+    private final boolean profileEnabled;
+    /** 画像常驻聚合的最大条目数 */
+    private final int profileMaxEntries;
+    /** 画像常驻块的字符预算（超出截断，控制每轮常驻成本） */
+    private final int profileMaxChars;
+    /** 活动目标层开关：关闭则不建 memory_goals 表、不注入进行中的目标 */
+    private final boolean goalsEnabled;
+    /** 常驻注入的进行中目标最大条数 */
+    private final int goalsMaxActive;
+    /** 进行中目标块的字符预算 */
+    private final int goalsMaxChars;
+    /** 单轮记忆注入的总字符预算：画像 + 目标 + 关键词召回合并封顶，避免无节制膨胀 */
+    private final int injectMaxChars;
+    /** 单条召回记忆的正文注入上限（超出截断加省略标记），<=0 不限 */
+    private final int perItemMaxChars;
+    /** 召回相关性下限：与查询词 MemorySimilarity 低于此分的结果丢弃，0 表示不过滤（默认关） */
+    private final double relevanceMinScore;
+    /** 查询扩展触发的输入长度下界：短于此值（追问/指代）时用近期对话补全检索词，<=0 关闭扩展 */
+    private final int queryExpandMinLen;
+    /** 查询扩展时最多附加的近期对话字符数 */
+    private final int queryExpandMaxChars;
     /** 记忆库容量上限，<=0 表示不限；超限按最旧淘汰 */
     private final int capacityMax;
     /** 存储初始化失败时为 null，所有操作自动变为 no-op */
     private final MemoryStore store;
     /** 候选层存储，null 表示候选层降级/关闭（不持久化候选、不写整理日志） */
     private final CandidateStore candidateStore;
+    /** 活动目标存储，null 表示目标层降级/关闭（不持久化目标、不注入进行中的目标） */
+    private final GoalStore goalStore;
     /** 记忆整理器：候选→正式库的六种动作决策核心，store 就绪时非 null */
     private final MemoryConsolidator consolidator;
     /** 反思触发策略：决定 run/会话结束时是否真的跑 LLM 蒸馏（取代旧的「每轮无条件反思」） */
@@ -92,6 +117,18 @@ public class LongTermMemory {
         this.candidateEnabled = ConfigUtil.getBoolean("memory.candidate.enabled", true);
         this.candidateKeepRecent = ConfigUtil.getInt("memory.candidate.keepRecent", 500);
         this.consolidationLlmEnabled = ConfigUtil.getBoolean("memory.consolidation.llm.enabled", true);
+        // 第三阶段配置：默认值均保持既有行为（画像/目标默认开但初始为空，预算/过滤宽松或关闭）
+        this.profileEnabled = ConfigUtil.getBoolean("memory.profile.enabled", true);
+        this.profileMaxEntries = ConfigUtil.getInt("memory.profile.maxEntries", 12);
+        this.profileMaxChars = ConfigUtil.getInt("memory.profile.maxChars", 1200);
+        this.goalsEnabled = ConfigUtil.getBoolean("memory.goals.enabled", true);
+        this.goalsMaxActive = ConfigUtil.getInt("memory.goals.maxActive", 12);
+        this.goalsMaxChars = ConfigUtil.getInt("memory.goals.maxChars", 1200);
+        this.injectMaxChars = ConfigUtil.getInt("memory.retrieval.inject.maxChars", 6000);
+        this.perItemMaxChars = ConfigUtil.getInt("memory.retrieval.perItemMaxChars", 600);
+        this.relevanceMinScore = ConfigUtil.getDouble("memory.retrieval.minScore", 0.0);
+        this.queryExpandMinLen = ConfigUtil.getInt("memory.retrieval.query.expandMinLen", 12);
+        this.queryExpandMaxChars = ConfigUtil.getInt("memory.retrieval.query.expandMaxChars", 240);
         this.capacityMax = ConfigUtil.getInt("memory.capacity.max", 1000);
         this.reflectionShutdownTimeoutSeconds = ConfigUtil.getInt("memory.reflection.shutdownTimeoutSeconds", 30);
 
@@ -115,6 +152,16 @@ public class LongTermMemory {
             }
         }
         this.candidateStore = cs;
+        // 目标层初始化失败只关闭目标层（不影响记忆主链路与候选层）
+        GoalStore gs = null;
+        if (s != null && goalsEnabled) {
+            try {
+                gs = new SqliteGoalStore();
+            } catch (Throwable t) {
+                log.error("LongTermMemory: goal store init failed, active goals disabled. ({})", t.toString());
+            }
+        }
+        this.goalStore = gs;
         this.consolidator = s == null ? null
                 : new MemoryConsolidator(s, cs, dedupEnabled, dedupThreshold, highThreshold,
                         dedupCandidates, consolidationLlmEnabled);
@@ -326,13 +373,18 @@ public class LongTermMemory {
     // ---------------- 遗忘 ----------------
 
     /**
-     * 按 id 删除一条记忆，成功返回 true
+     * 按 id 删除一条记忆，删除了已存在的行返回 true（不存在/降级返回 false）。
+     * <p>删前先查：ForgetTool 与 {@code /memory forget} 都把这个返回值当作「确实删掉了」的判据，
+     * 无条件返回 true 会把「本就不存在」误报成「已删除」，破坏第三阶段遗忘路径的可观测准确性。
      */
     public boolean forget(String id) {
         if (!isActive() || id == null || id.isBlank()) {
             return false;
         }
         try {
+            if (store.findById(id) == null) {
+                return false;
+            }
             store.deleteById(id);
             return true;
         } catch (Throwable t) {
@@ -371,7 +423,7 @@ public class LongTermMemory {
      * @param query       召回查询（通常是用户本轮输入）
      */
     public void injectRecall(List<MessageItem> callContext, String query) {
-        injectRecall(callContext, query, null);
+        injectRecall(callContext, query, null, null);
     }
 
     /**
@@ -379,8 +431,25 @@ public class LongTermMemory {
      * 只在来源会话内注入，其他会话的 SESSION 记忆不得泄进本轮 prompt。
      */
     public void injectRecall(List<MessageItem> callContext, String query, String sessionId) {
-        String block = recallBlock(query, null, topK, sessionId);
-        if (block.isEmpty() || callContext == null) {
+        injectRecall(callContext, query, sessionId, null);
+    }
+
+    /**
+     * 第三阶段：把「核心画像（常驻）＋进行中目标（常驻）＋按当前问题召回的记忆」合并成一个受总预算
+     * 约束的块注入本轮 system prompt。三段按优先级拼接（画像 &gt; 目标 &gt; 召回），共享 {@code injectMaxChars} 预算。
+     * <p>召回段额外做三件事：① 本轮输入过短（追问/指代）时用近期对话补全检索词；② 可选的相关性下限
+     * 过滤 BM25/LIKE 兜底带出的弱相关行；③ 单条正文截断。默认值均宽松或关闭，以不改变既有召回行为为准。
+     * <p>三段全空时不注入，保持 system prompt 原样（兼容旧「无召回则不动副本」语义）。
+     *
+     * @param recentTail 近期对话消息（可 null）：用于把短追问扩展成可召回的检索词
+     */
+    public void injectRecall(List<MessageItem> callContext, String query, String sessionId,
+                             List<MessageItem> recentTail) {
+        if (callContext == null) {
+            return;
+        }
+        String block = buildMemoryContextBlock(query, sessionId, recentTail);
+        if (block.isEmpty()) {
             return;
         }
         if (!callContext.isEmpty() && callContext.get(0) instanceof SystemMessageItem base) {
@@ -388,6 +457,372 @@ public class LongTermMemory {
         } else {
             callContext.add(0, new SystemMessageItem(block));
         }
+    }
+
+    /**
+     * 组装本轮注入的完整长期记忆块（画像 + 进行中目标 + 召回），受 {@code injectMaxChars} 总预算约束；
+     * 无内容返回空串。包私有便于冒烟测试直接断言各段拼装。
+     */
+    String buildMemoryContextBlock(String query, String sessionId, List<MessageItem> recentTail) {
+        if (!isActive()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        int budget = injectMaxChars > 0 ? injectMaxChars : Integer.MAX_VALUE;
+        appendSection(sb, profileBlock(), budget);
+        appendSection(sb, goalsBlock(), budget);
+        if (retrievalEnabled && query != null && !query.isBlank()) {
+            appendSection(sb, recallSection(expandQuery(query, recentTail), sessionId), budget);
+        }
+        return sb.toString();
+    }
+
+    /** 按剩余预算追加一个段落：预算耗尽则跳过，段落超预算则截断到剩余空间（软上限，容忍分隔符溢出） */
+    private void appendSection(StringBuilder sb, String section, int budget) {
+        if (section == null || section.isEmpty()) {
+            return;
+        }
+        int remaining = budget - sb.length();
+        if (remaining <= 0) {
+            return;
+        }
+        String s = section;
+        if (s.length() > remaining) {
+            s = s.substring(0, remaining).stripTrailing() + "…";
+        }
+        if (sb.length() > 0) {
+            sb.append("\n\n");
+        }
+        sb.append(s);
+    }
+
+    /**
+     * 召回段：按（可能已扩展的）检索词召回，再做相关性下限过滤与单条正文截断，最后沿用 {@link #format} 输出。
+     * 默认 {@code relevanceMinScore=0}（不过滤）、{@code perItemMaxChars} 足够大（不截断）时与旧行为一致。
+     */
+    private String recallSection(String effectiveQuery, String sessionId) {
+        List<Memory> hits = recall(effectiveQuery, null, topK, sessionId);
+        if (hits.isEmpty()) {
+            return "";
+        }
+        if (relevanceMinScore > 0) {
+            Memory probe = new Memory();
+            probe.setContent(effectiveQuery);
+            List<Memory> kept = new ArrayList<>();
+            for (Memory m : hits) {
+                if (MemorySimilarity.similarity(probe, m) >= relevanceMinScore) {
+                    kept.add(m);
+                }
+            }
+            hits = kept;
+            if (hits.isEmpty()) {
+                return "";
+            }
+        }
+        if (perItemMaxChars > 0) {
+            List<Memory> clipped = new ArrayList<>();
+            for (Memory m : hits) {
+                clipped.add(clipContent(m, perItemMaxChars));
+            }
+            hits = clipped;
+        }
+        return format(hits);
+    }
+
+    /**
+     * 短输入查询扩展：本轮输入去空白后长度低于 {@code queryExpandMinLen} 且近期对话可用时，把最近若干
+     * 条非 system 消息文本（尾部优先、封顶 {@code queryExpandMaxChars} 字符）并入检索词，缓解
+     * 「那之前为什么这样设计？」这类指代性追问因词面太窄而召回落空的问题。不做任何模型调用。
+     */
+    private String expandQuery(String query, List<MessageItem> recentTail) {
+        if (queryExpandMinLen <= 0 || recentTail == null || recentTail.isEmpty()
+                || query.strip().length() >= queryExpandMinLen) {
+            return query;
+        }
+        StringBuilder tail = new StringBuilder();
+        for (int i = recentTail.size() - 1; i >= 0 && tail.length() < queryExpandMaxChars; i--) {
+            MessageItem m = recentTail.get(i);
+            if (m == null || m instanceof SystemMessageItem) {
+                continue;
+            }
+            String text = m.transfer2prompt();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            if (tail.length() > 0) {
+                tail.insert(0, ' ');
+            }
+            tail.insert(0, text.strip());
+        }
+        return tail.length() == 0 ? query : query + " " + tail;
+    }
+
+    /** 返回正文截断到 maxChars 的记忆浅拷贝（不改原对象，避免污染存储层引用） */
+    private static Memory clipContent(Memory m, int maxChars) {
+        String c = m.getContent();
+        if (c == null || c.length() <= maxChars) {
+            return m;
+        }
+        Memory copy = new Memory();
+        copy.setId(m.getId());
+        copy.setTitle(m.getTitle());
+        copy.setContent(c.substring(0, maxChars).stripTrailing() + "…");
+        copy.setCategory(m.getCategory());
+        copy.setScope(m.getScope());
+        copy.setKeywords(m.getKeywords());
+        copy.setSourceSessionId(m.getSourceSessionId());
+        copy.setProjectKey(m.getProjectKey());
+        copy.setCreatedAt(m.getCreatedAt());
+        copy.setUpdatedAt(m.getUpdatedAt());
+        return copy;
+    }
+
+    // ---------------- 核心画像（常驻聚合） ----------------
+
+    /** 画像条目：全部 PROFILE+GLOBAL 记忆（跨项目可见），按更新时间倒序，最多 profileMaxEntries 条 */
+    public List<Memory> profileEntries() {
+        if (!isActive() || !profileEnabled) {
+            return Collections.emptyList();
+        }
+        try {
+            return store.listByCategory(MemoryCategory.PROFILE, MemoryScope.GLOBAL,
+                    Math.max(1, profileMaxEntries));
+        } catch (Throwable t) {
+            log.error("LongTermMemory: profileEntries failed", t);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 渲染常驻画像块：把 PROFILE 记忆压成一小段固定文本，超 {@code profileMaxChars} 预算即停止追加。
+     * 无画像条目返回空串（不注入）。每轮常驻，成本受预算硬约束。
+     */
+    String profileBlock() {
+        if (!isActive() || !profileEnabled || profileMaxEntries <= 0 || profileMaxChars <= 0) {
+            return "";
+        }
+        List<Memory> entries = profileEntries();
+        if (entries.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("===== 核心个人画像 =====\n");
+        int i = 1;
+        for (Memory m : entries) {
+            String line = oneLine(m.getTitle(), m.getContent());
+            if (sb.length() + line.length() + 4 > profileMaxChars) {
+                break;
+            }
+            sb.append(i++).append(". ").append(line).append("\n");
+        }
+        return i == 1 ? "" : sb.toString().stripTrailing();
+    }
+
+    // ---------------- 活动目标（第三阶段） ----------------
+
+    /** 目标层是否可用（memory.goals.enabled 且建表成功） */
+    public boolean isGoalsAvailable() {
+        return goalStore != null;
+    }
+
+    /** 登记一条进行中目标，返回目标 id；目标层不可用或正文为空返回 null */
+    public String addGoal(String title, String content, String sessionId) {
+        if (!isGoalsAvailable() || content == null || content.isBlank()) {
+            return null;
+        }
+        try {
+            MemoryGoal g = new MemoryGoal();
+            g.setTitle(title);
+            g.setContent(content.strip());
+            g.setStatus(GoalStatus.ACTIVE);
+            g.setProjectKey(resolveProjectKey());
+            g.setSourceSessionId(sessionId);
+            goalStore.save(g);
+            return g.getId();
+        } catch (Throwable t) {
+            log.error("LongTermMemory: addGoal failed", t);
+            return null;
+        }
+    }
+
+    /** 更新目标标题/正文（传 null/空白表示该字段不改）；目标不存在或降级返回 false */
+    public boolean updateGoal(String id, String title, String content) {
+        if (!isGoalsAvailable() || id == null || id.isBlank()) {
+            return false;
+        }
+        try {
+            MemoryGoal g = goalStore.findById(id);
+            if (g == null) {
+                return false;
+            }
+            if (title != null && !title.isBlank()) {
+                g.setTitle(title);
+            }
+            if (content != null && !content.isBlank()) {
+                g.setContent(content.strip());
+            }
+            goalStore.save(g);
+            return true;
+        } catch (Throwable t) {
+            log.error("LongTermMemory: updateGoal failed, id={}", id, t);
+            return false;
+        }
+    }
+
+    /** 变更目标状态；置终态时补完成时间戳，回到 ACTIVE 时清零 */
+    public boolean setGoalStatus(String id, GoalStatus status) {
+        if (!isGoalsAvailable() || id == null || id.isBlank() || status == null) {
+            return false;
+        }
+        try {
+            MemoryGoal g = goalStore.findById(id);
+            if (g == null) {
+                return false;
+            }
+            g.setStatus(status);
+            g.setCompletedAt(status.isTerminal() ? System.currentTimeMillis() : 0L);
+            goalStore.save(g);
+            return true;
+        } catch (Throwable t) {
+            log.error("LongTermMemory: setGoalStatus failed, id={}", id, t);
+            return false;
+        }
+    }
+
+    /** 物理删除一条目标；删了已存在的行返回 true（不存在/降级返回 false，与 forget 同样的准确性要求） */
+    public boolean deleteGoal(String id) {
+        if (!isGoalsAvailable() || id == null || id.isBlank()) {
+            return false;
+        }
+        try {
+            if (goalStore.findById(id) == null) {
+                return false;
+            }
+            goalStore.deleteById(id);
+            return true;
+        } catch (Throwable t) {
+            log.error("LongTermMemory: deleteGoal failed, id={}", id, t);
+            return false;
+        }
+    }
+
+    /** 本项目可见的进行中目标（常驻注入 + 观测用），按更新时间倒序 */
+    public List<MemoryGoal> listActiveGoals(int limit) {
+        if (!isGoalsAvailable()) {
+            return Collections.emptyList();
+        }
+        try {
+            return goalStore.listActive(resolveProjectKey(), limit > 0 ? limit : goalsMaxActive);
+        } catch (Throwable t) {
+            log.error("LongTermMemory: listActiveGoals failed", t);
+            return Collections.emptyList();
+        }
+    }
+
+    /** 本项目可见的最近目标（含终态，观测用） */
+    public List<MemoryGoal> listRecentGoals(int limit) {
+        if (!isGoalsAvailable()) {
+            return Collections.emptyList();
+        }
+        try {
+            return goalStore.listRecent(resolveProjectKey(), Math.max(1, limit));
+        } catch (Throwable t) {
+            log.error("LongTermMemory: listRecentGoals failed", t);
+            return Collections.emptyList();
+        }
+    }
+
+    /** 渲染进行中目标块：常驻注入，超 goalsMaxChars 预算停止追加；无进行中目标返回空串 */
+    String goalsBlock() {
+        if (!isGoalsAvailable() || goalsMaxActive <= 0 || goalsMaxChars <= 0) {
+            return "";
+        }
+        List<MemoryGoal> active = listActiveGoals(goalsMaxActive);
+        if (active.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("===== 进行中的目标 (").append(active.size()).append(") =====\n");
+        int i = 1;
+        for (MemoryGoal g : active) {
+            String line = oneLine(g.getTitle(), g.getContent());
+            if (sb.length() + line.length() + 4 > goalsMaxChars) {
+                break;
+            }
+            sb.append(i++).append(". ").append(line).append("\n");
+        }
+        return i == 1 ? "" : sb.toString().stripTrailing();
+    }
+
+    // ---------------- 可观测性访问器（供 REPL /memory） ----------------
+
+    /** 正式库记忆总条数 */
+    public int total() {
+        if (!isActive()) {
+            return 0;
+        }
+        try {
+            return store.count();
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** 目标总条数（含终态） */
+    public int goalTotal() {
+        if (!isGoalsAvailable()) {
+            return 0;
+        }
+        try {
+            return goalStore.count();
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** 最近 n 条记忆（新在前，不做可见性过滤，供人工查看） */
+    public List<Memory> recentMemories(int n) {
+        if (!isActive()) {
+            return Collections.emptyList();
+        }
+        try {
+            return store.listRecent(Math.max(1, n));
+        } catch (Throwable t) {
+            log.error("LongTermMemory: recentMemories failed", t);
+            return Collections.emptyList();
+        }
+    }
+
+    /** 最近 n 条整理决策日志（候选层降级时返回空） */
+    public List<ConsolidationLogEntry> recentConsolidationLogs(int n) {
+        if (candidateStore == null) {
+            return Collections.emptyList();
+        }
+        try {
+            return candidateStore.recentLogs(Math.max(1, n));
+        } catch (Throwable t) {
+            log.error("LongTermMemory: recentConsolidationLogs failed", t);
+            return Collections.emptyList();
+        }
+    }
+
+    /** 候选层是否可用 */
+    public boolean isCandidateAvailable() {
+        return candidateStore != null;
+    }
+
+    /** 画像常驻是否启用 */
+    public boolean isProfileEnabled() {
+        return profileEnabled;
+    }
+
+    /** 当前项目标识（观测展示用） */
+    public String currentProjectKey() {
+        return resolveProjectKey();
+    }
+
+    /** 标题 + 正文压成一行展示文本：空白归一、标题后接全角冒号 */
+    private static String oneLine(String title, String content) {
+        String body = content == null ? "" : content.strip().replaceAll("\\s+", " ");
+        return (title != null && !title.isBlank() ? title.strip() + "：" : "") + body;
     }
 
     // ---------------- 反思抽取 ----------------

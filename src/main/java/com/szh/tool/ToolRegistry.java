@@ -18,6 +18,7 @@ import com.szh.tool.tools.git.GitCommitTool;
 import com.szh.tool.tools.git.GitPushTool;
 import com.szh.tool.tools.git.GitStatusTool;
 import com.szh.tool.tools.memory.ForgetTool;
+import com.szh.tool.tools.memory.GoalTool;
 import com.szh.tool.tools.memory.RecallTool;
 import com.szh.tool.tools.memory.RememberTool;
 import com.szh.tool.tools.meta.AskUserQuestionTool;
@@ -185,7 +186,15 @@ public class ToolRegistry {
         if (!ConfigUtil.getBoolean("memory.tools.enabled", true) || !LongTermMemory.get().isActive()) {
             return List.of();
         }
-        return List.of(new RememberTool(), new RecallTool(), new ForgetTool());
+        List<Tool> tools = new ArrayList<>();
+        tools.add(new RememberTool());
+        tools.add(new RecallTool());
+        tools.add(new ForgetTool());
+        // 活动目标工具仅当目标层就绪时注册（memory.goals.enabled 且建表成功），否则不污染工具列表
+        if (LongTermMemory.get().isGoalsAvailable()) {
+            tools.add(new GoalTool());
+        }
+        return tools;
     }
 
     /**

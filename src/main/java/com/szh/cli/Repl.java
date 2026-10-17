@@ -9,6 +9,10 @@ import com.szh.agent.verify.VerifyResult;
 import com.szh.agent.verify.Verifier;
 import com.szh.context.InstructionMemoryLoader;
 import com.szh.event.Event;
+import com.szh.memory.ConsolidationLogEntry;
+import com.szh.memory.LongTermMemory;
+import com.szh.memory.Memory;
+import com.szh.memory.MemoryGoal;
 import com.szh.event.ModeSwitchedEvent;
 import com.szh.event.TodoUpdatedEvent;
 import com.szh.mcp.client.McpClient;
@@ -363,7 +367,7 @@ public class Repl {
                 }
             }
             case "/model" -> printModel();
-            case "/memory" -> printMemory();
+            case "/memory" -> handleMemory(parts);
             case "/todo" -> {
                 String rendered = TodoStore.get().render(sessionId);
                 System.out.println(rendered.isEmpty() ? "（当前无待办清单）" : rendered);
@@ -543,12 +547,34 @@ public class Repl {
     }
 
     /**
-     * 记忆状态一行摘要：已装配层数 + 估算 token，让用户一眼看到常驻 system prompt 里项目记忆占多少
+     * 记忆状态一行摘要：已装配层数 + 估算 token + L4 规模，让用户一眼看到常驻 system prompt 里
+     * 项目记忆占多少、长期记忆库有多少条。第三阶段把画像/目标也并入这一行，避免为看规模还得进 /memory。
      */
     private String memoryStatusText() {
         InstructionMemoryLoader.Assembly assembly = InstructionMemoryLoader.assemble(projectMemoryEnabled());
+        LongTermMemory ltm = LongTermMemory.get();
+        String l4 = ltm.isActive()
+                ? " | L4=" + ltm.total() + "记忆/" + ltm.goalTotal() + "目标" : "";
         return assembly.includedCount() + "层/≈" + assembly.estimatedTokens() + "token"
-                + (assembly.skippedCount() > 0 ? "（跳过 " + assembly.skippedCount() + "）" : "");
+                + (assembly.skippedCount() > 0 ? "（跳过 " + assembly.skippedCount() + "）" : "") + l4;
+    }
+
+    /**
+     * {@code /memory} 子命令分派：
+     * <ul>
+     *   <li>{@code /memory}：展示 L3 指令记忆装配 + L4 长期记忆观测（画像/目标/最近记忆/整理决策）；</li>
+     *   <li>{@code /memory forget <id>}：人工遗忘一条正式记忆（第三阶段「纠正/遗忘」的可观测入口）。</li>
+     * </ul>
+     */
+    private void handleMemory(String[] parts) {
+        if (parts.length >= 3 && "forget".equalsIgnoreCase(parts[1])) {
+            String id = parts[2].trim();
+            boolean ok = LongTermMemory.get().forget(id);
+            System.out.println(ok ? "已遗忘记忆 id=" + id
+                    : "遗忘失败：记忆不存在或长期记忆未启用。id=" + id);
+            return;
+        }
+        printMemory();
     }
 
     /**
@@ -568,6 +594,62 @@ public class Repl {
         if (Files.isDirectory(l1Dir)) {
             long count = countL1Docs(l1Dir);
             System.out.println("L1 按需文档：" + l1Dir + " 共 " + count + " 篇（不常驻，命中任务时才 read_file）");
+        }
+        printLongTermMemory();
+    }
+
+    /**
+     * L4 长期记忆可观测性（第三阶段）：把「哪些画像/目标正常驻注入、最近存了什么、整理器做了什么决策」
+     * 从只能靠猜变成可查。全部读走 {@link LongTermMemory} 的观测访问器（内部已 try-catch 降级），
+     * 展示侧任何异常都不能拖垮 REPL，故整块再包一层兵库。
+     */
+    private void printLongTermMemory() {
+        try {
+            LongTermMemory ltm = LongTermMemory.get();
+            System.out.println();
+            if (!ltm.isActive()) {
+                System.out.println("L4 长期记忆：未启用（memory.enabled=false 或存储初始化失败）。");
+                return;
+            }
+            System.out.println("L4 长期记忆（项目=" + ltm.currentProjectKey() + "）：");
+            System.out.println("  正式记忆 " + ltm.total() + " 条 | 目标 " + ltm.goalTotal() + " 条"
+                    + " | 候选层=" + (ltm.isCandidateAvailable() ? "on" : "off")
+                    + " | 画像常驻=" + (ltm.isProfileEnabled() ? "on" : "off"));
+            List<Memory> profile = ltm.profileEntries();
+            if (!profile.isEmpty()) {
+                System.out.println("  核心画像（" + profile.size() + "，跨项目常驻）：");
+                for (Memory m : profile) {
+                    System.out.println("    - [" + m.getId() + "] " + firstLine(m.getContent()));
+                }
+            }
+            List<MemoryGoal> goals = ltm.listActiveGoals(20);
+            if (!goals.isEmpty()) {
+                System.out.println("  进行中目标（" + goals.size() + "，常驻注入）：");
+                for (MemoryGoal g : goals) {
+                    System.out.println("    - [" + g.getId() + "] " + g.getStatus() + " " + firstLine(g.getContent()));
+                }
+            }
+            List<Memory> recent = ltm.recentMemories(8);
+            if (!recent.isEmpty()) {
+                System.out.println("  最近记忆（" + recent.size() + "，新在前）：");
+                for (Memory m : recent) {
+                    System.out.println("    - [" + m.getId() + "] " + m.getCategory() + "/" + m.getScope()
+                            + " " + firstLine(m.getContent()));
+                }
+            }
+            List<ConsolidationLogEntry> logs = ltm.recentConsolidationLogs(6);
+            if (!logs.isEmpty()) {
+                System.out.println("  最近整理决策（" + logs.size() + "）：");
+                for (ConsolidationLogEntry e : logs) {
+                    System.out.println("    - " + e.getAction() + " → "
+                            + (e.getMemoryId() == null || e.getMemoryId().isBlank() ? "-" : e.getMemoryId())
+                            + (e.getNote() == null || e.getNote().isBlank() ? "" : "  // " + firstLine(e.getNote())));
+                }
+            }
+            System.out.println("  人工遗忘：/memory forget <id>");
+        } catch (RuntimeException ex) {
+            log.warn("展示 L4 长期记忆失败", ex);
+            System.out.println("L4 长期记忆：展示失败（详见日志），不影响会话。");
         }
     }
 
@@ -614,7 +696,8 @@ public class Repl {
                   /session <id>         恢复指定已持久化 session
                   /runtime [chat|response]  查看/切换运行时链路（共享同一 session 上下文）
                   /model                查看当前 provider/model/store/stream 配置
-                  /memory               查看分层指令记忆装配（哪层生效/被哪道闸门跳过/占多少 token）
+                  /memory               查看分层指令记忆装配 + L4 长期记忆（画像/目标/最近记忆/整理决策）
+                  /memory forget <id>   人工遗忘一条正式记忆（id 来自 /memory 或 recall）
                   /todo                 查看当前待办清单（agent 用 todo_write 维护）
                   /mode [plan|normal]   查看/切换运行模式（plan=只读规划，normal=全部工具）
                   /mcp [reload|tools]   查看 MCP Server 状态 / 重载配置 / 列出 MCP 工具

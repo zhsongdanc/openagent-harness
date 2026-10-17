@@ -238,8 +238,8 @@ public class AgentResponseRuntime {
     private List<MessageItem> buildCallContext(RunContext ctx) {
         List<MessageItem> callContext = new ArrayList<>(agentState.getModelContext());
         // L4 长期记忆：按本轮用户输入召回相关记忆，合并进 system prompt；
-        // 带会话 id：其他会话的 SESSION 记忆不得泄进本轮 prompt
-        LongTermMemory.get().injectRecall(callContext, ctx.userInput, ctx.sessionId);
+        // 带会话 id：其他会话的 SESSION 记忆不得泄进本轮 prompt；传近期上下文：短追问时用它扩展检索词
+        LongTermMemory.get().injectRecall(callContext, ctx.userInput, ctx.sessionId, agentState.getModelContext());
         // PLAN 模式：往 system prompt 追加规划契约，并把工具收敛为只读子集（会话级模式，每轮读取）
         PlanModePolicy.decorateContext(callContext, ctx.sessionId);
         // 验证闭环软提示：闸门武装时往 system prompt 追加「收尾前自查」契约

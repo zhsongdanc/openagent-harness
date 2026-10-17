@@ -68,6 +68,28 @@ public class MemoryPhase1SmokeTest {
 
 
 
+    // ---------------- ① 截断方向：尾部优先 ----------------
+
+    /**
+     * 用直接实例化的 {@link MemoryExtractor}（maxInputChars 已由 setUp 压到 300）喂一段远超预算的对话，
+     * 通过捕获假摘要器收到的渲染文本，验证超预算时保留最新尾部、丢弃早期头部、且对被省略前文加显式标记。
+     */
+    private static void truncationKeepsLatest() {
+        CAPTURED.clear();
+        List<MessageItem> transcript = new ArrayList<>();
+        transcript.add(new SystemMessageItem("sys"));
+        transcript.add(new UserMessageItem("oldt99 " + "x".repeat(400)));
+        for (int i = 0; i < 5; i++) {
+            transcript.add(new AssistantMessageItem("中间填充内容 " + "y".repeat(80)));
+        }
+        transcript.add(new UserMessageItem("newt88 最新的用户偏好"));
+        new MemoryExtractor(captureSummarizer()).extract("sess-trunc", transcript);
+        String seen = String.join("\n", CAPTURED);
+        check(seen.contains("newt88"), "超预算时保留对话尾部（最新内容）");
+        check(!seen.contains("oldt99"), "超预算时丢弃对话头部（早期内容）");
+        check(seen.contains("省略"), "被省略的前文带显式标记告知抽取器");
+    }
+
     // ---------------- ② SESSION 隔离 ----------------
 
     private static void sessionScopeIsolation() {

@@ -358,6 +358,44 @@ public class SqliteMemoryStore implements MemoryStore {
         return queryRecent(null, limit, null, null);
     }
 
+    /**
+     * 画像常驻聚合用：按分类（可选作用域）拉最近若干条。分类是 UNINDEXED 列，直接等值过滤，
+     * 走普通 SELECT 而非 FTS MATCH；不做项目/会话可见性过滤（画像约定 scope=GLOBAL，跨项目可见）。
+     */
+    @Override
+    public List<Memory> listByCategory(MemoryCategory category, MemoryScope scope, int limit) {
+        List<Memory> result = new ArrayList<>();
+        if (limit <= 0) {
+            return result;
+        }
+        List<String> conds = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        if (category != null) {
+            conds.add("category = ?");
+            params.add(category.name());
+        }
+        if (scope != null) {
+            conds.add("scope = ?");
+            params.add(scope.name());
+        }
+        StringBuilder sql = new StringBuilder(SELECT_COLS).append(" FROM ").append(TABLE);
+        if (!conds.isEmpty()) {
+            sql.append(" WHERE ").append(String.join(" AND ", conds));
+        }
+        sql.append(" ORDER BY CAST(updated_at AS INTEGER) DESC LIMIT ?");
+        try (Connection c = open(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
+            bindParams(ps, params, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(mapRow(rs));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("SqliteMemoryStore: listByCategory failed, category={}", category, e);
+        }
+        return result;
+    }
+
     private List<Memory> queryRecent(MemoryScope scope, int limit, String projectKey, String sessionId) {
         List<Memory> result = new ArrayList<>();
         if (limit <= 0) {
